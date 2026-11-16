@@ -4,7 +4,7 @@ import { POST as signup } from "@/app/api/auth/signup/route";
 import { GET as config } from "@/app/api/auth/config/route";
 import { PaymentRequiredError } from "@/contracts";
 import { resetAllDemo } from "@/features/demo/service";
-import { reserveDraftCredit, resetPurchaseSyncState, resolveEntitlement, syncEntitlement, verificationMode, type Subscriber } from "@/features/purchases/server";
+import { resetPurchaseSyncState, unlockCall, resolveEntitlement, syncEntitlement, verificationMode, type Subscriber } from "@/features/purchases/server";
 import { createInvite, deleteInvite, listInvites } from "@/server/auth/invites";
 import { getEntitlement, nowIso, readDb, saveEntitlement } from "@/server/store";
 import { req, TEST_PASSWORD } from "../helpers";
@@ -131,20 +131,13 @@ describe("the gifted credit", () => {
     return readDb().users[0];
   };
 
-  it("is the new account's premium credit: unlocks one draft, once", async () => {
+  it("is the new account's premium credit: unlocks one call, once", async () => {
     const user = await signedUp();
     expect(getEntitlement(user.appUserId)).toMatchObject({ pro: false, premiumCredits: 1, grantedCredits: 1, premiumUsed: 0 });
     expect((await resolveEntitlement(user.appUserId)).premiumCredits).toBe(1);
-    expect((await reserveDraftCredit(user.appUserId)).usedCredit).toBe(true);
-    await expect(reserveDraftCredit(user.appUserId)).rejects.toBeInstanceOf(PaymentRequiredError);
+    expect((await unlockCall(user.appUserId, "call-a")).unlockedCalls).toEqual(["call-a"]);
+    await expect(unlockCall(user.appUserId, "call-b")).rejects.toBeInstanceOf(PaymentRequiredError);
     expect(getEntitlement(user.appUserId)).toMatchObject({ premiumCredits: 0, premiumUsed: 1, grantedCredits: 1 });
-  });
-
-  it("a failed draft gives it back", async () => {
-    const user = await signedUp();
-    const r = await reserveDraftCredit(user.appUserId);
-    await r.refund();
-    expect(getEntitlement(user.appUserId)).toMatchObject({ premiumCredits: 1, premiumUsed: 0 });
   });
 
   it("survives a RevenueCat sync (it is not a purchase there) and a bought credit adds to it", async () => {
@@ -152,7 +145,7 @@ describe("the gifted credit", () => {
     const user = await signedUp();
     expect((await syncEntitlement({ appUserId: user.appUserId }, emptyCustomer())).premiumCredits).toBe(1);
     expect((await syncEntitlement({ appUserId: user.appUserId }, emptyCustomer({ non_subscriptions: { mecena_solicitud_premium: [{ id: "t1", purchase_date: nowIso() }] } }))).premiumCredits).toBe(2);
-    expect((await reserveDraftCredit(user.appUserId)).usedCredit).toBe(true);
+    expect((await unlockCall(user.appUserId, "call-a")).premiumCredits).toBe(1);
     // spent stays spent after another sync
     expect((await syncEntitlement({ appUserId: user.appUserId }, emptyCustomer({ non_subscriptions: { mecena_solicitud_premium: [{ id: "t1", purchase_date: nowIso() }] } }))).premiumCredits).toBe(1);
     expect(getEntitlement(user.appUserId).grantedCredits).toBe(1);

@@ -4,7 +4,7 @@ import { GET as getApps, POST as postApp } from "@/app/api/applications/route";
 import { GET as getAssistant } from "@/app/api/applications/[id]/assistant/route";
 import { GET as getJury, POST as postJury } from "@/app/api/jury/route";
 import { POST as postResearch } from "@/app/api/calls/research/route";
-import { JURY_RUNS_PER_APPLICATION, serverEnv, type ApplicationSection } from "@/contracts";
+import { FREE_JURY_RUNS_PER_APPLICATION, serverEnv, type ApplicationSection } from "@/contracts";
 import { runWithAiSwitches } from "@/features/demo/ai-mode";
 import { fillGap, listGaps, parseAssistantReply } from "@/features/drafting/reply";
 import { juryRunsLeft, resolveEntitlement } from "@/features/purchases/server";
@@ -68,7 +68,9 @@ describe("no AI on the server", () => {
     const res = await postJury(req("/api/jury", { body: { applicationId: app.id } }));
     expect(res.status).toBe(503);
     expect((await res.json()).message).toMatch(/tribunal simulado necesita IA/);
-    expect(juryRunsLeft(await resolveEntitlement(DEMO_APP_USER_ID), app.id)).toBe(JURY_RUNS_PER_APPLICATION);
+    const stored = (await (await getApps(req(`/api/applications?callId=${CALL}&profileId=${DEMO_CREATOR_ID}`))).json()).application;
+    expect(stored.plan).toBe("free"); // the rule-based draft of a call the free plan shows: free
+    expect(juryRunsLeft(await resolveEntitlement(DEMO_APP_USER_ID), stored, { costsAi: false })).toBe(FREE_JURY_RUNS_PER_APPLICATION);
   });
 
   it("refuses deep research before the paywall, so nobody pays for it", async () => {

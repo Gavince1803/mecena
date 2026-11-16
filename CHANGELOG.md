@@ -84,6 +84,14 @@ The app's interface is in Spanish, so entries quote screen labels as the user se
 
 ### Changed
 
+- What Mecena Pro and the Solicitud premium sell, now that Mecena may have no AI of its own. The
+  first draft of an application is free for the 3 calls of the month (the rule-based draft, which
+  costs nothing and gets people into the core loop). Pro sells every match, the dossier adapted to
+  any call, drafts for any call and an unlimited simulated jury (with the user's own assistant over
+  MCP, or in the app when the server has AI). A Solicitud premium now unlocks one specific call
+  (everything Pro gives for it, with 5 jury runs) instead of paying for one AI draft, and the
+  paywall offers to spend an unused credit on the call it was opened for. The products and prices
+  in RevenueCat are unchanged. (#84)
 - The MCP server no longer calls Mecena's AI at all. `draft_application` and `score_application`
   are now only offered by the in-app agent, `explain_call` returns the bases and the rule-based
   fit for Claude to explain, the call-adapted dossier uses the deterministic adaptation, and every

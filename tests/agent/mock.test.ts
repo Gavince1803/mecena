@@ -4,7 +4,7 @@ import { AgentResponse } from "@/contracts/api";
 import { POST } from "@/app/api/agent/route";
 import { planMockTurn, resolveCallId, MOCK_HELP } from "@/features/agent/mock";
 import { runAgent } from "@/features/agent/service";
-import { grantPro, req, seedOnboardedCreator, loginDemo, demoToolCtx } from "../helpers";
+import { fillFreeQuota, grantPro, req, seedOnboardedCreator, loginDemo, demoToolCtx } from "../helpers";
 import { testCall, writeCalls } from "../mcp/calls";
 
 const CALL_ID = "fixture-beca-artes-plasticas";
@@ -65,11 +65,12 @@ describe("runAgent (mock mode)", () => {
     expect(turn.reply).toContain("http://localhost:3000/dossier?");
   });
 
-  it("solicitud without entitlement → paywall message (ok: false); with Pro → draft; then tribunal scores it", async () => {
+  it("solicitud for a call beyond the free plan → paywall message (ok: false); with Pro → draft; then tribunal scores it", async () => {
     await seedOnboardedCreator();
+    await fillFreeQuota();
     const denied = await runAgent("Prepárame la solicitud de la beca de artes plásticas", [], await demoToolCtx());
     expect(denied.toolCalls[0]).toMatchObject({ name: "draft_application", ok: false });
-    expect(denied.reply).toMatch(/^Necesitas Mecena Pro/);
+    expect(denied.reply).toMatch(/necesitas Mecena Pro o una Solicitud premium/);
     expect(denied.reply).toContain("/pro");
 
     await grantPro();

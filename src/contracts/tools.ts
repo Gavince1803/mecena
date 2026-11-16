@@ -77,14 +77,14 @@ export const toolSchemas = {
   },
   build_dossier: {
     description:
-      "Build the user's dossier (artistic portfolio for creators, capability memoria for businesses). With callId, adapt it to that call's requirements (image limits, ordering, texts for its criteria): the adaptation is a Mecena Pro feature; without Pro the general dossier is returned with the call's notes as a preview.",
+      "Build the user's dossier (artistic portfolio for creators, capability memoria for businesses). With callId, adapt it to that call's requirements (image limits, ordering, texts for its criteria): the adaptation needs Mecena Pro or the call unlocked with a Solicitud premium; otherwise the general dossier is returned with the call's notes as a preview.",
     input: z.object({ profileId: profileIdIn, callId: z.string().optional() }),
     // adapted: the dossier (and the page at url) really is the call variant (callId given and the user is Pro).
     output: z.object({ dossier: Dossier, url: z.string(), adapted: z.boolean() }),
   },
   export_dossier_pdf: {
     description:
-      "Export the dossier as a PDF and return its download URL (it opens with the user's Mecena session). With callId and Mecena Pro, the PDF is the version adapted to that call; without Pro, the general dossier.",
+      "Export the dossier as a PDF and return its download URL (it opens with the user's Mecena session). With callId and Mecena Pro (or the call unlocked with a Solicitud premium), the PDF is the version adapted to that call; otherwise the general dossier.",
     input: z.object({ profileId: profileIdIn, callId: z.string().optional() }),
     // sizeMb/note: the real file size and, for a call with a size limit, whether it fits (and if photos were reduced).
     // adapted: the PDF at url is the call version; callId: the call it was asked for (adapted or not).
@@ -124,7 +124,7 @@ export const toolSchemas = {
   },
   draft_application: {
     description:
-      "Draft the application (memoria, statement or company text, budget, checklist) for a call, written from the user's own words. Requires Pro or a Solicitud premium credit. Mecena prepares; the user submits.",
+      "Draft the application (memoria, statement or company text, budget, checklist) for a call, written from the user's own words. On the free plan, the rule-based draft for the calls the free plan shows; any call with Pro or with the call unlocked with a Solicitud premium. Mecena prepares; the user submits.",
     input: z.object({ callId: z.string(), profileId: profileIdIn }),
     output: z.object({ application: Application, url: z.string() }),
   },
@@ -136,7 +136,7 @@ export const toolSchemas = {
   },
   get_application_context: {
     description:
-      "Get everything you need to write the application for a call YOURSELF: writing rules (instructions), the user's profile, their own words (transcript fragments with ids), their works' technical sheets, the call's criteria, allowed expenses, maximum amount and required documents, and the current draft if there is one. Write the draft following the instructions, then save it with save_application_draft. A new draft requires Mecena Pro or a Solicitud premium credit (the credit is used when you save).",
+      "Get everything you need to write the application for a call YOURSELF: writing rules (instructions), the user's profile, their own words (transcript fragments with ids), their works' technical sheets, the call's criteria, allowed expenses, maximum amount and required documents, and the current draft if there is one. Write the draft following the instructions, then save it with save_application_draft. Free for the calls the free plan shows (its monthly matches); any call with Mecena Pro or with the call unlocked with a Solicitud premium.",
     input: z.object({ callId: z.string(), profileId: profileIdIn }),
     output: z.object({
       instructions: z.string(),
@@ -151,7 +151,7 @@ export const toolSchemas = {
   },
   save_application_draft: {
     description:
-      "Save the application you wrote (after get_application_context) as the user's draft for that call. Mecena checks it: budget lines must use the call's allowed expense types and stay under its maximum (otherwise you get the reason, fix it and save again), sourceSegmentIds must be ids from the transcript, and the checklist is rebuilt from the call's required documents. Saving over an existing draft creates a new version. Saving a first draft uses Mecena Pro or one Solicitud premium credit.",
+      "Save the application you wrote (after get_application_context) as the user's draft for that call. Mecena checks it: budget lines must use the call's allowed expense types and stay under its maximum (otherwise you get the reason, fix it and save again), sourceSegmentIds must be ids from the transcript, and the checklist is rebuilt from the call's required documents. Saving over an existing draft creates a new version. Nothing is charged: the same access rule as get_application_context.",
     input: z.object({
       callId: z.string(),
       profileId: profileIdIn,
@@ -163,7 +163,7 @@ export const toolSchemas = {
   },
   get_jury_brief: {
     description:
-      "Get what you need to run the simulated jury YOURSELF on a saved application: scoring rules (instructions), the panel of judges (each with a focus), the call's criteria with ids and maximum points, the application's current text and version, and the works' technical sheets. Write one verdict per judge, in their role, then save them with save_jury_score. Orientative only. Without Mecena Pro each application includes a limited number of jury runs (runsLeft).",
+      "Get what you need to run the simulated jury YOURSELF on a saved application: scoring rules (instructions), the panel of judges (each with a focus), the call's criteria with ids and maximum points, the application's current text and version, and the works' technical sheets. Write one verdict per judge, in their role, then save them with save_jury_score. Orientative only. Mecena Pro: unlimited; a call unlocked with a Solicitud premium: several runs; the free plan: one run per application (runsLeft).",
     input: z.object({ applicationId: z.string() }),
     output: z.object({
       instructions: z.string(),

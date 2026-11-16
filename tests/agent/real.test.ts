@@ -5,7 +5,7 @@ import { AGENT_TOOL_NAMES } from "@/contracts";
 import { AGENT_MAX_HISTORY, AGENT_MAX_MESSAGE_CHARS, AGENT_MAX_OUTPUT_TOKENS, AGENT_SYSTEM_PROMPT, AGENT_TOKEN_BUDGET, MAX_AGENT_ITERATIONS, agentTools, historyToMessages, type AgentLlmClient } from "@/features/agent/real";
 import { runAgent } from "@/features/agent/service";
 import { AiError } from "@/server/ai/llm";
-import { grantPro, seedOnboardedCreator, demoToolCtx } from "../helpers";
+import { grantPro, seedOnboardedCreator, demoToolCtx, fillFreeQuota } from "../helpers";
 
 type Params = Anthropic.Messages.MessageCreateParamsNonStreaming;
 type Block = Anthropic.Messages.ContentBlock;
@@ -105,6 +105,7 @@ describe("runAgent (real mode, fake client)", () => {
 
   it("returns tool errors to Claude as is_error tool_result (paywall)", async () => {
     await seedOnboardedCreator();
+    await fillFreeQuota(); // the call is beyond the free plan
     const { client, calls } = fakeClient([
       msg([toolUse("t1", "draft_application", { callId: CALL_ID })], "tool_use"),
       msg([text("Para redactarla necesitas Mecena Pro: http://localhost:3000/pro")], "end_turn"),
@@ -113,7 +114,7 @@ describe("runAgent (real mode, fake client)", () => {
     expect(turn.toolCalls).toEqual([{ name: "draft_application", input: { callId: CALL_ID }, ok: false }]);
     const result = (calls[1].messages[2].content as Anthropic.Messages.ToolResultBlockParam[])[0];
     expect(result.is_error).toBe(true);
-    expect(String(result.content)).toMatch(/^Necesitas Mecena Pro.*\/pro/);
+    expect(String(result.content)).toMatch(/necesitas Mecena Pro o una Solicitud premium.*\/pro/);
   });
 
   it("bad tool input and unknown tools are is_error results too, and the loop continues", async () => {

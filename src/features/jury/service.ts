@@ -3,7 +3,7 @@
 import { BadRequestError, ConflictError, PaymentRequiredError, type Application, type ApplicationSnapshot, type CallCriterion, type JudgePersona, type JudgeVerdict, type JuryScore, type ToolContext, type UserFact } from "@/contracts";
 import { getAi } from "@/server/ai";
 import { getApplication, getCall, getProfile, getTranscript, latestJuryScore, listJuryScores, listWorks, newId, nowIso, saveApplication, saveJuryScore } from "@/server/store";
-import { JURY_RUNS_USED_MESSAGE, juryRunsLeft, resolveEntitlement, withJuryRun } from "@/features/purchases/server";
+import { juryRunLimit, juryRunsLeft, juryRunsMessage, resolveEntitlement, withJuryRun } from "@/features/purchases/server";
 import { CREATOR_JUDGES, criteriaFor, isVisualCriterion, judgesFor } from "./rules";
 import { judgeSystem } from "./ai";
 
@@ -159,8 +159,9 @@ Después guarda los veredictos con save_jury_score, con el "applicationVersion" 
 export async function clientJuryBrief(applicationId: string, ctx: Pick<ToolContext, "appUserId">) {
   const application = getApplication(applicationId);
   const { rawCall, criteria, estimated, judges } = panelFor(application);
-  const left = juryRunsLeft(await resolveEntitlement(ctx.appUserId), application.id);
-  if (left <= 0) throw new PaymentRequiredError(JURY_RUNS_USED_MESSAGE);
+  const e = await resolveEntitlement(ctx.appUserId);
+  const left = juryRunsLeft(e, application, { costsAi: false }); // the client model scores: no AI spent here
+  if (left <= 0) throw new PaymentRequiredError(juryRunsMessage(juryRunLimit(e, application, { costsAi: false })));
   return {
     instructions: `${judgeSystem(estimated)}\n${CLIENT_JURY_FORMAT}`,
     judges,
@@ -189,7 +190,7 @@ export async function saveClientScore(input: { applicationId: string; applicatio
   if (unknown.length || missing.length || byJudge.size !== input.verdicts.length)
     throw new BadRequestError(`Necesito un veredicto por cada juez del tribunal (${judges.map((j) => j.id).join(", ")}), sin repetir ninguno.`);
   const verdicts = judges.map((j) => byJudge.get(j.id)!);
-  return withJuryRun(ctx.appUserId, application.id, () => saveJuryScore(aggregateVerdicts({ application, criteria, judges, verdicts, estimated })));
+  return withJuryRun(ctx.appUserId, application.id, () => saveJuryScore(aggregateVerdicts({ application, criteria, judges, verdicts, estimated })), { costsAi: false });
 }
 
 /** The score of the current version if there is one (no AI call), otherwise score it (or join the scoring in flight). */

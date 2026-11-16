@@ -262,6 +262,7 @@ export function DraftPage({ callId }: { callId: string }) {
         <Paywall
           open={paywall}
           trigger="draft_application"
+          callId={callId}
           onClose={() => setPaywall(false)}
           onPurchased={() => {
             setPaywall(false);

@@ -4,7 +4,7 @@ import { GET as getCalls } from "@/app/api/calls/route";
 import { POST as createApplication } from "@/app/api/applications/route";
 import { POST as resetDemo } from "@/app/api/demo/reset/route";
 import { DEMO_APP_USER_ID } from "@/fixtures";
-import { req, loginDemo } from "../helpers";
+import { fillFreeQuota, req, loginDemo } from "../helpers";
 
 // Route handlers need a session: run as the demo account (owns the fixture profiles).
 beforeEach(async () => {
@@ -23,7 +23,8 @@ describe("API routes (scaffold)", () => {
     expect(body.mode).toBe("creator");
   });
 
-  it("POST /api/applications without entitlement is 402 payment_required", async () => {
+  it("POST /api/applications for a call beyond the free plan, without entitlement, is 402 payment_required", async () => {
+    await fillFreeQuota();
     const r = await createApplication(req("/api/applications", { body: { callId: "fixture-beca-artes-plasticas", appUserId: DEMO_APP_USER_ID } }));
     expect(r.status).toBe(402);
     expect((await r.json()).error).toBe("payment_required");

@@ -4,6 +4,7 @@
 import { JuryImproveRequest } from "@/contracts/api";
 import { improveApplication, reviseFromScore } from "@/features/jury/service";
 import { withJuryRun } from "@/features/purchases/server";
+import { isServerAiOff } from "@/server/ai/llm";
 import { getApplication } from "@/server/store";
 import { ownedApplication, requireUser } from "@/server/auth";
 import { body, json, route } from "@/server/http";
@@ -21,7 +22,7 @@ export const POST = route(idempotent(async (req: Request) => {
   // (the revision; its re-score through POST /api/jury is not charged again). A retry of an already revised version is free.
   const app = getApplication(input.applicationId);
   const alreadyRevised = app.revision?.fromScoreId === input.scoreId && app.revision.version === app.version;
-  const charge = <T,>(fn: () => Promise<T>) => (alreadyRevised ? fn() : withJuryRun(user.appUserId, input.applicationId, fn));
+  const charge = <T,>(fn: () => Promise<T>) => (alreadyRevised ? fn() : withJuryRun(user.appUserId, input.applicationId, fn, { costsAi: !isServerAiOff() }));
   if (stage === "revise") {
     const { application, previous, alreadyRevised: again } = await charge(() => reviseFromScore(input));
     return json({ application, previous, alreadyRevised: again });
