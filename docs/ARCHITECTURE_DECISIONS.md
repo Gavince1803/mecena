@@ -68,6 +68,7 @@ with Context describing the limits of ADR-003, and ADR-003's status changed to "
 | [023](#adr-023-from-dark-glassmorphism-to-a-light-design-system-with-skeletons-and-idempotent-writes) | From dark glassmorphism to a light design system with skeletons and idempotent writes | Accepted |
 | [024](#adr-024-kind-first-entry-creator-or-pyme-before-signing-in) | Kind-first entry: creator or pyme before signing in | Accepted |
 | [025](#adr-025-stretch-features-justification-and-b2b-panel-with-the-money-maths-in-code) | Stretch features: justification and B2B panel, with the money maths in code | Accepted |
+| [026](#adr-026-over-mcp-the-users-own-claude-does-the-ai-work) | Over MCP, the user's own Claude does the AI work | Accepted |
 
 ---
 
@@ -708,3 +709,38 @@ matched calls), never the dossier, works, transcript or drafts.
 memoria (it downloads as .txt), no MCP tool yet. Their limits are listed in the pull requests.
 
 **Evidence.** `src/features/justification/`, `src/features/panel/`, PRs #52, #53, #55.
+
+---
+
+## ADR-026: Over MCP, the user's own Claude does the AI work
+
+- **Status:** Accepted
+- **Date:** 2026-11-16
+
+**Context.** Every AI call runs on the owner's key (ADR-020), and that included the MCP server: `draft_application`,
+`score_application`, `explain_call` and the call variant of `build_dossier` called Claude on the server even though the
+person was already talking to their own Claude, which then only relayed the result. Each draft cost an Opus call and
+each jury run three, paid by the owner, for users who already pay for a Claude plan.
+
+**Decision.** The MCP server exposes its own tool list (`MCP_TOOL_NAMES`) and never calls Mecena's AI. Drafting and the
+jury move to the client: `get_application_context` hands the client's model the drafting rules (the same system prompt
+the server model uses), the profile, the user's own words with their ids, the works' sheets and the call;
+`save_application_draft` checks what it wrote (budget against the allowed expenses and the maximum, source ids, the
+checklist rebuilt from the bases) and saves it. `get_jury_brief` and `save_jury_score` do the same for the jury, and
+the verdicts are aggregated by the same pure function as the server jury (`aggregateVerdicts`). `explain_call` returns
+the rules' result over MCP. As a safety net, every MCP call runs with the AI switched to the deterministic mocks
+(`runWithAiSwitches({ aiMock: true })`), so no tool reaches the Anthropic API whatever it calls underneath. The in-app
+agent keeps `draft_application` and `score_application` (`AGENT_TOOL_NAMES`): it is still on the owner's key.
+
+**Consequences.**
+- Connecting Claude to Mecena costs the owner nothing in AI. Paywalls stay where they were: a first draft takes Pro or a
+  Solicitud premium credit (on save), and jury runs without Pro are counted on save.
+- The quality of drafts and jury runs made over MCP depends on the client's model and on it following the instructions.
+  The server checks structure and money, not prose; a client could save a made-up score for its own application, which
+  only affects the person who did it (the score is orientative).
+- Over MCP the dossier call variant uses the deterministic adaptation, and updating the profile does not start the
+  background BDNS search (it starts the next time the feed is opened in the app).
+- The app itself still spends the owner's key; moving that cost to paying users is separate work.
+
+**Evidence.** `src/contracts/tools.ts`, `src/mcp/core.ts`, `src/features/drafting/service.ts`,
+`src/features/jury/service.ts`, `tests/mcp/tools.test.ts`, PR #82.

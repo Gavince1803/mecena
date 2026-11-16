@@ -167,7 +167,8 @@ function verdictSchema(call: Call) {
   });
 }
 
-const judgeSystem = (estimated: boolean) => `Eres miembro de una comisión de valoración de convocatorias en España. Puntúas una solicitud con ${estimated ? "unos criterios estimados (las bases no publican puntuaciones)" : "los criterios de valoración de las bases"}.
+/** The judges' scoring rules, shared by the server jury and a jury run by a client model (MCP). */
+export const judgeSystem = (estimated: boolean) => `Eres miembro de una comisión de valoración de convocatorias en España. Puntúas una solicitud con ${estimated ? "unos criterios estimados (las bases no publican puntuaciones)" : "los criterios de valoración de las bases"}.
 Para cada criterio (criterionId = su id exacto): puntos entre 0 y su máximo, con un baremo realista y constante: premia lo concreto y verificable (fechas, cifras, lugares, nombres, trayectoria con año, a quién llega) y resta por huecos "[Completa: …]" y vaguedades. Un borrador correcto pero genérico ronda el 60 % del máximo; uno concreto, con los huecos resueltos y que responde a cada criterio, puede pasar del 80 %.
 Un comentario de una línea y 1-2 mejoras concretas que la persona pueda hacer con sus propios datos (nunca pidas inventar). Si la mejora necesita un dato que no está en la solicitud, nómbralo ("Indica las fechas de…", "Di cuántas personas…").
 No ves las obras: valora la calidad artística, la originalidad o la composición por lo que dicen la solicitud y las fichas técnicas, sin penalizar por no ver imágenes.

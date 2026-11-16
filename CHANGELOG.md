@@ -38,6 +38,15 @@ The app's interface is in Spanish, so entries quote screen labels as the user se
 
 ### Added
 
+- New MCP tools so that the user's own Claude writes the application and plays the simulated
+  jury: `get_application_context` gives it Mecena's drafting rules, the profile, the user's own
+  words and the call, and `save_application_draft` checks what it wrote (allowed expenses, the
+  maximum amount, source fragments, the checklist from the bases) and saves it as the draft;
+  `get_jury_brief` and `save_jury_score` do the same for the jury, scored exactly like the jury in
+  the app. Until now every draft and jury run requested from Claude Desktop, Claude Code or
+  claude.ai was paid for by the owner's Anthropic key, even though the person was already using
+  their own Claude plan. The paywalls are unchanged: a first draft still takes Mecena Pro or a
+  Solicitud premium credit, and jury runs without Pro are still counted. (#82)
 - Community health files, so that people outside the hackathon team know how to use, report
   problems with and contribute to Mecena: a `CONTRIBUTING.md` (local setup, the feature branch →
   pull request → `main` flow, and the 24–48 hour first answer the two maintainers commit to), a
@@ -64,6 +73,13 @@ The app's interface is in Spanish, so entries quote screen labels as the user se
 
 ### Changed
 
+- The MCP server no longer calls Mecena's AI at all. `draft_application` and `score_application`
+  are now only offered by the in-app agent, `explain_call` returns the bases and the rule-based
+  fit for Claude to explain, the call-adapted dossier uses the deterministic adaptation, and every
+  MCP call runs with the AI forced to its deterministic versions as a safety net, so connecting
+  Claude to Mecena can never spend the server's key. As a side effect, updating the profile from
+  Claude no longer starts the background BDNS search; it starts the next time the feed is opened in
+  the app. See ADR-026 in `docs/ARCHITECTURE_DECISIONS.md` and the updated `docs/mcp.md`. (#82)
 - Dependabot no longer proposes major bumps of Node: neither the Docker base image nor
   `@types/node`. Its first run offered Node 25, which is not an LTS release and which CI (on
   Node 22) never tests, and `@types/node` 26, which lets TypeScript accept APIs that Node 22

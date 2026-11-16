@@ -1,14 +1,19 @@
 /**
- * The 8 Mecena tools. ONE definition, two front doors:
- *  - the in-app agent (/api/agent) passes these to Claude as tools,
- *  - the MCP server registers them for Claude Desktop / Claude Code: remote over Streamable HTTP (POST /api/mcp,
- *    personal token) or local over stdio (src/mcp/server.ts).
+ * The Mecena tools. ONE definition, two front doors with different tool sets:
+ *  - the in-app agent (/api/agent) passes AGENT_TOOL_NAMES to Claude as tools: it runs on Mecena's server-side key,
+ *    so drafting and the jury run on Mecena's AI (draft_application, score_application);
+ *  - the MCP server registers MCP_TOOL_NAMES for Claude Desktop / Claude Code / claude.ai: remote over Streamable HTTP
+ *    (POST /api/mcp, personal token) or local over stdio (src/mcp/server.ts). There the user's own Claude does the
+ *    writing and the judging: Mecena hands it the context (get_application_context, get_jury_brief) and checks and
+ *    saves what it wrote (save_application_draft, save_jury_score). No MCP tool calls Mecena's AI (ADR-026).
  * Handlers live in src/tools/registry.ts and delegate to feature services.
  */
 import { z } from "zod";
-import { Application, Call, Dossier, JuryScore, MatchResult, Profile, ProfileKind, ProfilePatch } from "./domain";
+import { Application, ApplicationSection, BudgetLine, Call, ChecklistItem, Dossier, JudgePersona, JuryScore, MatchResult, Profile, ProfileKind, ProfilePatch, TechnicalSheet } from "./domain";
+import { JudgeVerdict } from "./ai";
 
-export const TOOL_NAMES = [
+/** The tools the in-app agent offers its (server-side) model. */
+export const AGENT_TOOL_NAMES = [
   "get_profile",
   "update_profile",
   "build_dossier",
@@ -18,7 +23,43 @@ export const TOOL_NAMES = [
   "draft_application",
   "score_application",
 ] as const;
+
+/** The tools the MCP server exposes: the same data tools, and client-side drafting and jury instead of server AI. */
+export const MCP_TOOL_NAMES = [
+  "get_profile",
+  "update_profile",
+  "build_dossier",
+  "export_dossier_pdf",
+  "search_calls",
+  "explain_call",
+  "get_application_context",
+  "save_application_draft",
+  "get_jury_brief",
+  "save_jury_score",
+] as const;
+
+export const TOOL_NAMES = [...AGENT_TOOL_NAMES, "get_application_context", "save_application_draft", "get_jury_brief", "save_jury_score"] as const;
 export type ToolName = (typeof TOOL_NAMES)[number];
+export type AgentToolName = (typeof AGENT_TOOL_NAMES)[number];
+export type McpToolName = (typeof MCP_TOOL_NAMES)[number];
+
+/** A transcript fragment in the user's own words: `id` is what sections cite in sourceSegmentIds. */
+const OwnWords = z.object({ id: z.string(), text: z.string() });
+
+/** Bounds on what a client model may save (the text is stored as the user's draft). */
+const SectionIn = ApplicationSection.extend({
+  key: z.string().min(1).max(40),
+  title: z.string().min(1).max(200),
+  body: z.string().min(1).max(20_000),
+  sourceSegmentIds: z.array(z.string().max(80)).max(200).default([]),
+});
+const JudgeVerdictIn = JudgeVerdict.extend({
+  judgeId: z.string().max(80),
+  scores: z
+    .array(z.object({ criterionId: z.string().max(80), points: z.number(), comment: z.string().max(1_000), fixes: z.array(z.string().max(500)).max(5) }))
+    .max(30),
+  overall: z.string().max(1_000),
+});
 
 const profileIdIn = z.string().optional().describe("Profile id. Omit to use the user's active profile (recommended).");
 
@@ -91,6 +132,59 @@ export const toolSchemas = {
     description:
       "Run the simulated jury: several judges score the draft with the call's official criteria and weights and suggest concrete fixes. Orientative only.",
     input: z.object({ applicationId: z.string() }),
+    output: z.object({ score: JuryScore, url: z.string() }),
+  },
+  get_application_context: {
+    description:
+      "Get everything you need to write the application for a call YOURSELF: writing rules (instructions), the user's profile, their own words (transcript fragments with ids), their works' technical sheets, the call's criteria, allowed expenses, maximum amount and required documents, and the current draft if there is one. Write the draft following the instructions, then save it with save_application_draft. A new draft requires Mecena Pro or a Solicitud premium credit (the credit is used when you save).",
+    input: z.object({ callId: z.string(), profileId: profileIdIn }),
+    output: z.object({
+      instructions: z.string(),
+      sectionKeys: z.array(z.string()),
+      needsBudget: z.boolean(),
+      profile: Profile,
+      transcript: z.array(OwnWords),
+      works: z.array(TechnicalSheet),
+      call: Call,
+      existing: Application.optional(),
+    }),
+  },
+  save_application_draft: {
+    description:
+      "Save the application you wrote (after get_application_context) as the user's draft for that call. Mecena checks it: budget lines must use the call's allowed expense types and stay under its maximum (otherwise you get the reason, fix it and save again), sourceSegmentIds must be ids from the transcript, and the checklist is rebuilt from the call's required documents. Saving over an existing draft creates a new version. Saving a first draft uses Mecena Pro or one Solicitud premium credit.",
+    input: z.object({
+      callId: z.string(),
+      profileId: profileIdIn,
+      sections: z.array(SectionIn).min(1).max(12),
+      budget: z.array(BudgetLine.extend({ concept: z.string().min(1).max(200), expenseType: z.string().max(200), note: z.string().max(500).optional() })).max(30).default([]),
+      checklist: z.array(ChecklistItem.extend({ item: z.string().max(500), hint: z.string().max(500).optional() })).max(40).optional(),
+    }),
+    output: z.object({ application: Application, url: z.string(), created: z.boolean() }),
+  },
+  get_jury_brief: {
+    description:
+      "Get what you need to run the simulated jury YOURSELF on a saved application: scoring rules (instructions), the panel of judges (each with a focus), the call's criteria with ids and maximum points, the application's current text and version, and the works' technical sheets. Write one verdict per judge, in their role, then save them with save_jury_score. Orientative only. Without Mecena Pro each application includes a limited number of jury runs (runsLeft).",
+    input: z.object({ applicationId: z.string() }),
+    output: z.object({
+      instructions: z.string(),
+      judges: z.array(JudgePersona),
+      criteria: z.array(z.object({ id: z.string(), name: z.string(), description: z.string(), maxPoints: z.number(), writtenOnly: z.boolean().optional() })),
+      estimated: z.boolean(),
+      application: Application,
+      call: z.object({ id: z.string(), title: z.string(), summary: z.string(), allowedExpenses: z.array(z.string()), maxAmountEur: z.number().nullable() }),
+      works: z.array(TechnicalSheet),
+      /** Jury runs left for this application without Pro; null with Pro (unlimited). */
+      runsLeft: z.number().int().min(0).nullable(),
+    }),
+  },
+  save_jury_score: {
+    description:
+      "Save the simulated jury you ran (after get_jury_brief): one verdict per judge of the panel (judgeId), with a score for every criterion (criterionId = its exact id, points between 0 and its maximum), a one-line comment and 1-2 concrete fixes. applicationVersion must be the version get_jury_brief returned. Mecena clamps the points, averages the judges, normalises to 100 and shows the result on the jury page. Uses one jury run without Pro.",
+    input: z.object({
+      applicationId: z.string(),
+      applicationVersion: z.number().int().min(1),
+      verdicts: z.array(JudgeVerdictIn).min(1).max(6),
+    }),
     output: z.object({ score: JuryScore, url: z.string() }),
   },
 } as const satisfies Record<ToolName, { description: string; input: z.ZodObject; output: z.ZodObject }>;

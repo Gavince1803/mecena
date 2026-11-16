@@ -5,6 +5,7 @@
  */
 import { ZodError, z } from "zod";
 import {
+  BadRequestError,
   ConflictError,
   ForbiddenError,
   NotFoundError,
@@ -126,11 +127,33 @@ const summarizers: Summarizers = {
       .join("\n"),
   draft_application: ({ application, url }) =>
     `Borrador de solicitud listo (versión ${application.version}): ${plural(application.sections.length, "apartado", "apartados")}, ${plural(application.budget.length, "partida", "partidas")} de presupuesto y ${plural(application.checklist.length, "punto", "puntos")} de checklist. Mecena prepara; tú presentas. Revísalo aquí: ${url}`,
-  score_application: ({ score, url }) => {
-    const crit = score.criteria.map((c) => `${c.name}: ${Math.round(c.points)}/${c.maxPoints}`).join("; ");
-    return `El tribunal simulado le da ${score.total}/100.${crit ? ` ${crit}.` : ""} ${score.disclaimer} Detalle y mejoras: ${url}`;
-  },
+  score_application: ({ score, url }) => juryLine(score, url),
+  get_application_context: ({ call, profile, transcript, works, existing, sectionKeys }) =>
+    [
+      `Contexto para redactar la solicitud de «${call.title}» (${call.organizer}) · ${callStatusText(call)} · plazo: ${call.deadlineText}.`,
+      `Tienes el perfil de ${profile.displayName || "la persona"}, ${plural(transcript.length, "fragmento", "fragmentos")} con sus propias palabras, ${plural(works.length, "ficha", "fichas")} de obra y ${plural(call.criteria.length, "criterio", "criterios")} de valoración.`,
+      existing ? `Ya hay un borrador (versión ${existing.version}): si guardas, será la versión ${existing.version + 1}.` : "",
+      `Redáctala siguiendo "instructions" (apartados: ${sectionKeys.join(", ")}) y guárdala con save_application_draft.`,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  save_application_draft: ({ application, url, created }) =>
+    `${created ? "Borrador de solicitud guardado" : `Solicitud actualizada a la versión ${application.version}`}: ${plural(application.sections.length, "apartado", "apartados")}, ${plural(application.budget.length, "partida", "partidas")} de presupuesto y ${plural(application.checklist.length, "punto", "puntos")} de checklist. Mecena prepara; tú presentas. Revísalo aquí: ${url}`,
+  get_jury_brief: ({ judges, criteria, application, call, runsLeft }) =>
+    [
+      `Tribunal simulado para la solicitud de «${call.title}» (versión ${application.version}): ${plural(judges.length, "juez", "jueces")} (${judges.map((j) => j.name).join(", ")}) y ${plural(criteria.length, "criterio", "criterios")}.`,
+      runsLeft === null ? "" : `Le ${runsLeft === 1 ? "queda" : "quedan"} ${plural(runsLeft, "pasada", "pasadas")} por el tribunal sin Mecena Pro.`,
+      `Escribe un veredicto por juez siguiendo "instructions" y guárdalos con save_jury_score (applicationVersion ${application.version}).`,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  save_jury_score: ({ score, url }) => juryLine(score, url),
 };
+
+function juryLine(score: ToolOutput<"score_application">["score"], url: string): string {
+  const crit = score.criteria.map((c) => `${c.name}: ${Math.round(c.points)}/${c.maxPoints}`).join("; ");
+  return `El tribunal simulado le da ${score.total}/100.${crit ? ` ${crit}.` : ""} ${score.disclaimer} Detalle y mejoras: ${url}`;
+}
 
 /** One short Spanish line (or a few) a human can read, for any tool output. */
 export function summarizeToolResult<N extends ToolName>(name: N, output: ToolOutput<N>): string {
@@ -164,7 +187,7 @@ export function toolErrorMessage(e: unknown, caller?: ToolContext["caller"]): st
   }
   if (e instanceof ZodError) return `Datos de entrada no válidos: ${e.issues.map((i) => `${i.path.join(".") || "(entrada)"}: ${i.message}`).join("; ")}`;
   if (e instanceof NotFoundError) return sentence(e.message.charAt(0).toUpperCase() + e.message.slice(1));
-  if (e instanceof UnauthorizedError || e instanceof ForbiddenError || e instanceof ConflictError || e instanceof TooManyRequestsError) return e.message;
+  if (e instanceof UnauthorizedError || e instanceof ForbiddenError || e instanceof ConflictError || e instanceof TooManyRequestsError || e instanceof BadRequestError) return e.message;
   if (e instanceof AiBudgetError) return e.message;
   if (e instanceof AiError) return "La IA no ha podido completar esta tarea ahora mismo. Inténtalo de nuevo en unos segundos.";
   return "Algo ha fallado al ejecutar esta herramienta. Inténtalo de nuevo en unos segundos.";
@@ -172,7 +195,7 @@ export function toolErrorMessage(e: unknown, caller?: ToolContext["caller"]): st
 
 /** Errors a tool throws on purpose (paywall, not found, bad input…): no need to log them as failures. */
 export function isExpectedToolError(e: unknown): boolean {
-  return [PaymentRequiredError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, TooManyRequestsError, AiError, ZodError].some((C) => e instanceof C);
+  return [PaymentRequiredError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, TooManyRequestsError, BadRequestError, AiError, ZodError].some((C) => e instanceof C);
 }
 
 /** JSON Schema (draft 2020-12) of a tool's input, for Claude's `tools[].input_schema`. */

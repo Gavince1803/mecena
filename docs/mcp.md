@@ -1,23 +1,27 @@
 # Mecena en Claude Desktop y Claude Code (MCP)
 
-Mecena expone sus **8 herramientas** como servidor MCP. Son exactamente las mismas que usa el agente de la app («Pregúntale a Mecena», `POST /api/agent`): un único módulo, `src/tools/registry.ts`, con varias puertas de entrada.
+Mecena expone **10 herramientas** como servidor MCP. Salen del mismo módulo que las del agente de la app («Pregúntale a Mecena», `POST /api/agent`), `src/tools/registry.ts`, pero con una diferencia importante: **por MCP, Mecena no gasta IA propia.** El Claude de la persona (su plan de Claude Desktop, Claude Code o claude.ai) es quien redacta la solicitud y hace de tribunal; Mecena le da los datos y las reglas, y comprueba y guarda lo que escribe (ADR-026).
 
-| Puerta | Para qué | Datos que ve | Autenticación |
-|---|---|---|---|
-| **MCP remoto** `https://mecena.fly.dev/api/mcp` (Streamable HTTP) | Uso normal y **la demo**: Claude trabaja con tu cuenta real de la app | Los de la app publicada: tu perfil, tus obras, tus compras | Token personal (`Authorization: Bearer mcn_…`), creado en **Cuenta → Conectar con Claude** |
-| MCP local (stdio, `npm run mcp`) | Desarrollo | Los del `MECENA_DATA_DIR` de tu ordenador | `MECENA_USER_EMAIL` (quien lanza el proceso ya tiene el disco) |
-| Agente en la app (`/api/agent`) | Botón «Pregúntale» en el móvil | Los de la app | Sesión de la web |
+| Puerta | Para qué | Datos que ve | Autenticación | IA de Mecena |
+|---|---|---|---|---|
+| **MCP remoto** `https://mecena.fly.dev/api/mcp` (Streamable HTTP) | Uso normal y **la demo**: Claude trabaja con tu cuenta real de la app | Los de la app publicada: tu perfil, tus obras, tus compras | Token personal (`Authorization: Bearer mcn_…`), creado en **Cuenta → Conectar con Claude** | Ninguna: redacta y puntúa tu Claude |
+| MCP local (stdio, `npm run mcp`) | Desarrollo | Los del `MECENA_DATA_DIR` de tu ordenador | `MECENA_USER_EMAIL` (quien lanza el proceso ya tiene el disco) | Ninguna |
+| Agente en la app (`/api/agent`) | Botón «Pregúntale» en el móvil | Los de la app | Sesión de la web | Sí (`ANTHROPIC_API_KEY` del servidor) |
 
 | Herramienta | Qué hace |
 |---|---|
 | `get_profile` | Lee tu perfil (artista o pyme/autónomo). |
 | `update_profile` | Actualiza campos del perfil (sin inventar nada). |
-| `build_dossier` | Monta el dossier. Con `callId`, lo adapta a esa convocatoria (orden, límite de imágenes, textos según sus criterios): **la adaptación es de Mecena Pro**; sin Pro devuelve el dossier general con las notas de la convocatoria como vista previa, y lo dice. |
+| `build_dossier` | Monta el dossier. Con `callId`, lo adapta a esa convocatoria (orden, límite de imágenes, textos según sus criterios): **la adaptación es de Mecena Pro**; sin Pro devuelve el dossier general con las notas de la convocatoria como vista previa, y lo dice. Por MCP la adaptación de los textos es la determinista (por reglas). |
 | `export_dossier_pdf` | Exporta el dossier a PDF y devuelve el enlace de descarga (se abre con tu sesión de Mecena). Con `callId` y Pro, el PDF adaptado; sin Pro, el general. |
 | `search_calls` | Busca convocatorias **abiertas o próximas** que encajan contigo, con su estado en cada línea. Las recurrentes cuya edición ya cerró solo salen con `includeClosed`. **Sin Pro ves 3 convocatorias al mes** (el mismo cupo que en `/convocatorias`) y el resumen añade «Tienes N más con Mecena Pro: …/pro». |
-| `explain_call` | Explica unas bases en lenguaje claro: requisitos, cuantía, plazo, documentación, criterios. Sin Pro, solo para las 3 que ya tienes desbloqueadas este mes. |
-| `draft_application` | Redacta la solicitud con tus propias palabras. **Requiere Mecena Pro o una Solicitud premium.** |
-| `score_application` | Pasa la solicitud por el tribunal simulado (orientativo) con los criterios oficiales. |
+| `explain_call` | Devuelve las bases (requisitos, cuantía, plazo, documentación, criterios) y el encaje calculado por reglas; tu Claude te las explica en lenguaje claro. Sin Pro, solo para las 3 que ya tienes desbloqueadas este mes. |
+| `get_application_context` | Le da a tu Claude todo lo necesario para **redactar él** la solicitud: las reglas de redacción de Mecena, tu perfil, tus propias palabras (fragmentos de la entrevista con su id), las fichas de tus obras, los criterios, gastos admitidos, importe máximo y documentos de la convocatoria, y el borrador actual si lo hay. **Un borrador nuevo requiere Mecena Pro o una Solicitud premium** (el crédito se gasta al guardar). |
+| `save_application_draft` | Guarda la solicitud que ha escrito tu Claude. Mecena la comprueba: cada partida del presupuesto tiene que ser un gasto admitido y el total no puede pasar del máximo (si no, devuelve el motivo para que Claude lo corrija), los `sourceSegmentIds` tienen que ser tuyos y la checklist se monta con las bases. Guardar sobre un borrador existente crea una versión nueva. |
+| `get_jury_brief` | Le da a tu Claude lo necesario para **hacer él** de tribunal simulado: las reglas de puntuación, los tres jueces (cada uno con su enfoque), los criterios con su id y su máximo, y el texto y la versión de la solicitud. Sin Pro, cada solicitud incluye un número de pasadas (`runsLeft`). |
+| `save_jury_score` | Guarda los veredictos de tu Claude (uno por juez). Mecena recorta los puntos al máximo de cada criterio, hace la media de los jueces y la normaliza a 100, igual que el tribunal de la app, y lo muestra en `/tribunal`. Cuenta una pasada sin Pro. |
+
+`draft_application` y `score_application` (redacción y tribunal con la IA de Mecena) siguen existiendo, pero **solo en el agente de la app**. Por MCP, además, todas las llamadas se ejecutan con la IA de Mecena forzada a sus versiones deterministas: aunque una herramienta llamase al modelo por debajo, no llegaría nunca a la API de Anthropic. Por eso, actualizar el perfil desde Claude no lanza la búsqueda en BDNS en segundo plano: se lanza la próxima vez que abras `/convocatorias` en la app.
 
 Cada llamada devuelve **dos bloques de texto**: un resumen corto en castellano y, después, el JSON completo. Los enlaces (`url`) usan `MECENA_PUBLIC_URL` (en Fly, `https://mecena.fly.dev`) y se abren con la sesión de tu cuenta. Los errores también llegan en castellano (datos no válidos, «no encontrado», muro de pago con el enlace a `/pro`, demasiadas peticiones).
 
@@ -55,7 +59,7 @@ Claude Desktop lanza los servidores MCP de su fichero de configuración como pro
    ```
 
    El token va en `env` y la cabecera se escribe `Authorization:${MECENA_AUTH}` (sin espacio tras los dos puntos): así no se rompe el argumento en Windows, donde Claude Desktop parte los argumentos por espacios.
-3. **Cierra Claude Desktop del todo** (también desde la bandeja/barra de menús) y vuelve a abrirlo. En el botón de herramientas del chat debe aparecer **mecena** con 8 herramientas. La primera vez `npx` descarga `mcp-remote` (unos segundos, con Internet).
+3. **Cierra Claude Desktop del todo** (también desde la bandeja/barra de menús) y vuelve a abrirlo. En el botón de herramientas del chat debe aparecer **mecena** con 10 herramientas. La primera vez `npx` descarga `mcp-remote` (unos segundos, con Internet).
 
 ### Claude Code
 
@@ -96,14 +100,14 @@ Sin token, o con uno revocado, responde `401` con el motivo en castellano. `GET`
 - **App y MCP remoto** leen la misma cuenta en el mismo servidor: una compra hecha en el móvil (RevenueCat) desbloquea Pro también en Claude, en la siguiente llamada. El mensaje de pago lo dice así.
 - **MCP local (stdio)** lee los datos de tu ordenador: la compra solo cuenta si la haces en la web que usa ese mismo `MECENA_DATA_DIR` (tu `npm run dev` o su túnel). Una compra en mecena.fly.dev **no** llega al MCP local; para eso, usa el MCP remoto. El mensaje de pago del MCP local lo avisa.
 
-Sin Pro, las herramientas aplican los mismos muros que la app: 3 convocatorias al mes (`search_calls`, `explain_call`), dossier general en vez del adaptado (`build_dossier`, `export_dossier_pdf`) y `draft_application` bloqueada. Ninguna consulta sirve para rodearlos.
+Sin Pro, las herramientas aplican los mismos muros que la app: 3 convocatorias al mes (`search_calls`, `explain_call`), dossier general en vez del adaptado (`build_dossier`, `export_dossier_pdf`), un borrador nuevo solo con Pro o una Solicitud premium (`get_application_context`, `save_application_draft`) y un número de pasadas por el tribunal por solicitud (`get_jury_brief`, `save_jury_score`). Ninguna consulta sirve para rodearlos.
 
 ## 3. Guion de la demo (paso 6)
 
 **Antes de subir al escenario**
 
 1. En el móvil de la demo, entra en mecena.fly.dev con la cuenta de la demo, haz la entrevista y la compra sandbox (pasos 2-5): la adaptación del dossier a una convocatoria es Pro.
-2. Con esa misma cuenta (en el móvil o en el portátil): **Cuenta → Conectar con Claude → Crear token** y pega el bloque en Claude Desktop del portátil (sección 1). Reinicia Claude Desktop y comprueba que salen las 8 herramientas.
+2. Con esa misma cuenta (en el móvil o en el portátil): **Cuenta → Conectar con Claude → Crear token** y pega el bloque en Claude Desktop del portátil (sección 1). Reinicia Claude Desktop y comprueba que salen las 10 herramientas.
 3. Deja escrito en Claude Desktop (sin enviar):
    > **Hazme el dossier para los Premios Qué! Arte y pásamelo en PDF.**
 
@@ -121,8 +125,8 @@ Otras frases que funcionan bien:
 
 - «¿Qué convocatorias encajan conmigo?»
 - «Explícame las bases de los Premios Qué! Arte: quién puede presentarse, cuánto dan y qué piden.»
-- «Prepárame la solicitud para esa convocatoria.» (sin Pro → enlace a `/pro`; tras comprar en el móvil, vuelve a pedirlo)
-- «Pásala por el tribunal y dime qué mejorarías.»
+- «Prepárame la solicitud para esa convocatoria.» (Claude pide el contexto, la redacta y la guarda; sin Pro → enlace a `/pro`; tras comprar en el móvil, vuelve a pedirlo)
+- «Pásala por el tribunal y dime qué mejorarías.» (Claude hace de los tres jueces y guarda la puntuación)
 - «Añade a mi perfil que expuse en el MARCO de Vigo en 2025.»
 
 Si el paso se recorta por tiempo, basta con mencionarlo: «y todo esto también funciona desde Claude vía MCP».
@@ -156,7 +160,7 @@ En el móvil, el botón **✦ Pregúntale** (abajo a la derecha, encima de la na
 
 Por debajo es `POST /api/agent` (`{ message, history }` → `{ reply, toolCalls }`), con la sesión de la web (sin ella, 401). Las herramientas se ejecutan como la cuenta de la sesión; un `appUserId` o `profileId` ajeno en el cuerpo no sirve de nada.
 
-- **Con `ANTHROPIC_API_KEY`:** Claude (`MECENA_MODEL_FAST`, por defecto `claude-sonnet-5-5`: elegir herramientas y escribir 2-5 frases no necesita Opus; el trabajo pesado lo hacen las herramientas con su propio modelo) con las 8 herramientas y `tool_choice: auto` (nunca forzado). Topes por mensaje: 4 pasos, 1024 tokens de salida por paso, 60 000 tokens en total, los últimos 12 mensajes del historial (2000 caracteres cada uno) y el JSON de las herramientas recortado. Los errores de herramienta vuelven a Claude como `tool_result` con `is_error`.
+- **Con `ANTHROPIC_API_KEY`:** Claude (`MECENA_MODEL_FAST`, por defecto `claude-sonnet-5-5`: elegir herramientas y escribir 2-5 frases no necesita Opus; el trabajo pesado lo hacen las herramientas con su propio modelo) con sus 8 herramientas (las de redacción y tribunal con la IA de Mecena: `draft_application`, `score_application`; no las 4 de redacción en el cliente del MCP) y `tool_choice: auto` (nunca forzado). Topes por mensaje: 4 pasos, 1024 tokens de salida por paso, 60 000 tokens en total, los últimos 12 mensajes del historial (2000 caracteres cada uno) y el JSON de las herramientas recortado. Los errores de herramienta vuelven a Claude como `tool_result` con `is_error`.
 - **Sin clave (mocks):** un enrutador por palabras clave: *tribunal/puntúa* → `score_application`; *solicitud* → `draft_application`; *dossier* → `build_dossier` (*pdf* → `export_dossier_pdf`); *explica/bases* + convocatoria conocida → `explain_call`; *convocatoria/beca/ayuda/premio* → `search_calls`; *perfil* → `get_profile`. La convocatoria se reconoce por su nombre sin importar tildes ni plurales («artes plásticas» = «arte plástica»), y si hay empate gana la que comparte la frase completa y, después, la que sigue abierta.
 
 ## Problemas frecuentes

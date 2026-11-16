@@ -10,7 +10,7 @@ import { PassThrough } from "node:stream";
 import { describe, expect, it } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { TOOL_NAMES } from "@/contracts";
+import { MCP_TOOL_NAMES } from "@/contracts";
 import { DEMO_EMAIL, loginDemo } from "../helpers";
 
 const repo = path.resolve(__dirname, "../..");
@@ -31,7 +31,7 @@ describe("MCP stdio server", () => {
     try {
       await client.connect(transport); // any non-JSON line on stdout would break the handshake
       const { tools } = await client.listTools();
-      expect(tools.map((t) => t.name).sort()).toEqual([...TOOL_NAMES].sort());
+      expect(tools.map((t) => t.name).sort()).toEqual([...MCP_TOOL_NAMES].sort());
       const res = await client.callTool({ name: "get_profile", arguments: {} });
       expect(res.isError).toBeFalsy();
       expect(stderr).toContain(`[mecena-mcp] ready on stdio as ${DEMO_EMAIL}`);

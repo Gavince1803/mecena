@@ -1,7 +1,7 @@
 /** WP-04: real-mode agent loop driven by a fake Anthropic client (no API key, no network). */
 import { describe, expect, it } from "vitest";
 import type Anthropic from "@anthropic-ai/sdk";
-import { TOOL_NAMES } from "@/contracts";
+import { AGENT_TOOL_NAMES } from "@/contracts";
 import { AGENT_MAX_HISTORY, AGENT_MAX_MESSAGE_CHARS, AGENT_MAX_OUTPUT_TOKENS, AGENT_SYSTEM_PROMPT, AGENT_TOKEN_BUDGET, MAX_AGENT_ITERATIONS, agentTools, historyToMessages, type AgentLlmClient } from "@/features/agent/real";
 import { runAgent } from "@/features/agent/service";
 import { AiError } from "@/server/ai/llm";
@@ -37,7 +37,7 @@ function fakeClient(responses: Anthropic.Messages.Message[]) {
 describe("agent tool definitions", () => {
   it("exposes the 8 tools with JSON Schema inputs from zod", () => {
     const tools = agentTools();
-    expect(tools.map((t) => t.name)).toEqual([...TOOL_NAMES]);
+    expect(tools.map((t) => t.name)).toEqual([...AGENT_TOOL_NAMES]);
     for (const t of tools) {
       expect(t.input_schema.type).toBe("object");
       expect(t.input_schema).not.toHaveProperty("$schema");

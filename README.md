@@ -70,7 +70,7 @@ Sign-up on the live app is invite-only (every AI call spends the owner's Anthrop
 - **Justification** (`/justificacion/<applicationId>`). Photograph an invoice, Mecena reads it, assigns it to a budget line, warns about deviations and drafts the final memoria.
 - **B2B panel** (`/panel`) for schools and associations: members who accepted an invitation, their open matching calls and upcoming deadlines.
 - **Monetisation with RevenueCat Web Billing** (`/pro`): Mecena Pro (monthly, annual) and a one-off *Solicitud premium*, verified server side. Details in [`docs/revenuecat.md`](docs/revenuecat.md).
-- **Ask Mecena and MCP.** The in-app agent ("✦ Pregúntale", `POST /api/agent`) and an MCP server share the same 8 tools (`get_profile`, `update_profile`, `build_dossier`, `export_dossier_pdf`, `search_calls`, `explain_call`, `draft_application`, `score_application`), so Claude Desktop or Claude Code can drive your Mecena account. Guide (Spanish): [`docs/mcp.md`](docs/mcp.md).
+- **Ask Mecena and MCP.** The in-app agent ("✦ Pregúntale", `POST /api/agent`) and an MCP server share one tools module (`src/tools/registry.ts`), so Claude Desktop, Claude Code or claude.ai can drive your Mecena account. Over MCP, Mecena spends no AI of its own: the user's Claude writes the application and plays the jury (`get_application_context` → `save_application_draft`, `get_jury_brief` → `save_jury_score`), and Mecena checks and saves the result. Guide (Spanish): [`docs/mcp.md`](docs/mcp.md).
 - **Works without keys.** Every AI call has a deterministic mock and purchases have a mock adapter, so the whole app and its test suite run offline.
 - **Per-user accounts.** Each account sees only its own profiles, works, dossiers, applications and purchases.
 
@@ -154,7 +154,7 @@ flowchart TB
     proxy["src/proxy.ts<br/>optional Basic auth + session gate"]
     api["API routes src/app/api/*<br/>auth, profile, onboarding, works, dossier, calls,<br/>applications, jury, justification, panel, entitlements, agent"]
     mcphttp["/api/mcp<br/>remote MCP, Bearer mcn_ token"]
-    tools["src/tools/registry.ts<br/>8 shared tools"]
+    tools["src/tools/registry.ts<br/>shared tools"]
     features["Feature services src/features/*<br/>onboarding, works, dossier, matching, drafting,<br/>jury, justification, purchases, deep-research, panel"]
     ai["src/server/ai + src/server/ai-limits.ts<br/>per-user limits + daily cap"]
     sched["src/instrumentation.ts<br/>daily BDNS refresh, in process"]

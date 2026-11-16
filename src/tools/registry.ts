@@ -1,20 +1,20 @@
 /**
  * Shared tools module (scaffold-owned): the single implementation behind both the in-app agent and the MCP server
- * (remote /api/mcp and local stdio).
+ * (remote /api/mcp and local stdio). Each front door offers its own subset (AGENT_TOOL_NAMES, MCP_TOOL_NAMES).
  * Handlers are thin: validate input with the contract schema, scope it to the caller (ToolContext), delegate to
  * feature services. The model never chooses whose data it touches: a profileId it passes must belong to
  * ctx.userId (else "not found"), an omitted one is the user's active profile, and entitlements use ctx.appUserId.
  * Paywalls are the app's: the free plan sees its top matches only (./limits) and the dossier call variant is Pro.
  */
 import { z } from "zod";
-import { serverEnv, toolSchemas, TOOL_NAMES, type ToolContext, type ToolHandlers, type ToolInput, type ToolName, type ToolOutput } from "@/contracts";
+import { AGENT_TOOL_NAMES, MCP_TOOL_NAMES, serverEnv, toolSchemas, TOOL_NAMES, type AgentToolName, type McpToolName, type ToolContext, type ToolHandlers, type ToolInput, type ToolName, type ToolOutput } from "@/contracts";
 import { getCall, patchProfile } from "@/server/store";
 import { scheduleProfileSearch } from "@/features/calls-ingest/live";
 import { ownedApplication, ownedProfile } from "@/server/auth";
 import { buildDossier, dossierUrl, exportDossierPdf, loadDossierData } from "@/features/dossier/service";
 import { explainCall, searchCalls } from "@/features/matching/service";
-import { draftApplication } from "@/features/drafting/service";
-import { scoreApplication } from "@/features/jury/service";
+import { clientDraftContext, draftApplication, saveClientDraft } from "@/features/drafting/service";
+import { clientJuryBrief, saveClientScore, scoreApplication } from "@/features/jury/service";
 import { withJuryRun } from "@/features/purchases/server";
 import { limitAi } from "@/server/ai-limits";
 import { canAdaptDossier, limitMatches, requireCallVisible } from "./limits";
@@ -73,8 +73,10 @@ export const handlers: ToolHandlers = {
     const profileId = profileFor(input, ctx);
     getCall(input.callId);
     await requireCallVisible(ctx, profileId, input.callId);
-    limitAi({ id: ctx.userId }, "call-detail");
-    return explainCall({ ...input, profileId });
+    // Over MCP the user's own Claude explains the bases: the rules' result, no model call on Mecena's side.
+    const ai = ctx.caller === "app";
+    if (ai) limitAi({ id: ctx.userId }, "call-detail");
+    return explainCall({ ...input, profileId, ai });
   },
   draft_application: async (input, ctx) => {
     limitAi({ id: ctx.userId }, "draft");
@@ -86,6 +88,27 @@ export const handlers: ToolHandlers = {
     limitAi({ id: ctx.userId }, "jury");
     const score = await withJuryRun(ctx.appUserId, applicationId, () => scoreApplication(applicationId));
     return { score, url: `${base()}/tribunal/${encodeURIComponent(applicationId)}` };
+  },
+  // Client-side drafting and jury (MCP): the caller's model writes, Mecena gives the context and checks what it saves.
+  get_application_context: async (input, ctx) => {
+    const profileId = profileFor(input, ctx);
+    getCall(input.callId);
+    return clientDraftContext({ callId: input.callId, profileId }, ctx);
+  },
+  save_application_draft: async (input, ctx) => {
+    const profileId = profileFor(input, ctx);
+    getCall(input.callId);
+    const { application, created } = await saveClientDraft({ callId: input.callId, profileId, sections: input.sections, budget: input.budget }, ctx);
+    return { application, created, url: `${base()}/solicitud/${encodeURIComponent(application.callId)}` };
+  },
+  get_jury_brief: async ({ applicationId }, ctx) => {
+    ownedApplication(ctx.userId, applicationId);
+    return clientJuryBrief(applicationId, ctx);
+  },
+  save_jury_score: async (input, ctx) => {
+    ownedApplication(ctx.userId, input.applicationId);
+    const score = await saveClientScore(input, ctx);
+    return { score, url: `${base()}/tribunal/${encodeURIComponent(input.applicationId)}` };
   },
 };
 
@@ -100,4 +123,14 @@ export async function runTool<N extends ToolName>(name: N, rawInput: unknown, ct
 
 export function isToolName(n: string): n is ToolName {
   return (TOOL_NAMES as readonly string[]).includes(n);
+}
+
+/** One of the tools the in-app agent offers (its model must not call the MCP-only ones). */
+export function isAgentToolName(n: string): n is AgentToolName {
+  return (AGENT_TOOL_NAMES as readonly string[]).includes(n);
+}
+
+/** One of the tools the MCP server exposes. */
+export function isMcpToolName(n: string): n is McpToolName {
+  return (MCP_TOOL_NAMES as readonly string[]).includes(n);
 }
