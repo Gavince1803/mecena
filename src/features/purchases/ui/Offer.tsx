@@ -5,20 +5,28 @@
 // `onPurchased` fires only after the server returned an entitlement that unlocks what the paywall was opened for
 // (after a purchase or after "Restaurar compras").
 import { useEffect, useState, type ReactNode } from "react";
-import type { EntitlementState, PaywallTrigger, Plan, PlanId } from "@/contracts";
+import { API, hasCallAccess, type EntitlementState, type PaywallTrigger, type Plan, type PlanId } from "@/contracts";
+import { apiSend } from "@/lib/api-client";
 import { useApp } from "@/components/shell/AppProvider";
 import { Button, LoadingRegion } from "@/components/ui";
 import { getPurchases } from "../client";
 import { monthlyPrice, OFFER, PLANS, plansFor, TRIGGER_SUBTITLE, unlocks } from "../offer";
 import s from "./paywall.module.css";
 
-export function Offer({ trigger, onPurchased, headingId }: { trigger: PaywallTrigger; onPurchased(e: EntitlementState): void; headingId?: string }) {
+/** Spend a Solicitud premium credit on the call the paywall was opened for, when there is one to spend. */
+async function spendCreditOn(callId: string | undefined, e: EntitlementState): Promise<EntitlementState> {
+  if (!callId || e.pro || hasCallAccess(e, callId) || e.premiumCredits <= 0) return e;
+  return (await apiSend<{ entitlement: EntitlementState }>(API.entitlementsUnlock, { callId })).entitlement;
+}
+
+export function Offer({ trigger, callId, onPurchased, headingId }: { trigger: PaywallTrigger; callId?: string; onPurchased(e: EntitlementState): void; headingId?: string }) {
   const { appUserId } = useApp();
   const [plans, setPlans] = useState<Plan[]>(PLANS);
   // the adapter is chosen from build-time env, so the mode is known on the first render (no "Modo prueba" flash)
   const mode = getPurchases().mode;
   const [ready, setReady] = useState(false);
-  const [busy, setBusy] = useState<PlanId | "restore" | null>(null);
+  const [busy, setBusy] = useState<PlanId | "restore" | "credit" | null>(null);
+  const [credits, setCredits] = useState(0); // unused Solicitud premium credits (offered for this call when > 0)
   const [pendingMock, setPendingMock] = useState<PlanId | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -35,6 +43,7 @@ export function Offer({ trigger, onPurchased, headingId }: { trigger: PaywallTri
       .then(async () => {
         if (!live) return;
         setReady(true);
+        if (callId) p.getEntitlement().then((e) => live && setCredits(e.pro ? 0 : e.premiumCredits), () => undefined);
         const loaded = await p.getPlans();
         if (live) setPlans(loaded);
       })
@@ -46,7 +55,32 @@ export function Offer({ trigger, onPurchased, headingId }: { trigger: PaywallTri
     return () => {
       live = false;
     };
-  }, [appUserId, attempt]);
+  }, [appUserId, attempt, callId]);
+
+  /** After a purchase or a restore: a one-off credit goes to this call, then the screen unlocks if it really does. */
+  const settle = async (e: EntitlementState, otherwise: () => void) => {
+    let next = e;
+    try {
+      next = await spendCreditOn(callId, e);
+    } catch {
+      setError(OFFER.error);
+      return;
+    }
+    if (unlocks(trigger, next, callId)) onPurchased(next);
+    else otherwise();
+  };
+
+  const spendCredit = async () => {
+    if (busy || !callId) return;
+    setError(null);
+    setInfo(null);
+    setBusy("credit");
+    try {
+      await settle(await getPurchases().getEntitlement(), () => setError(OFFER.error));
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const buy = async (id: PlanId) => {
     if (busy) return; // one purchase at a time: a double tap never opens two checkouts
@@ -57,10 +91,8 @@ export function Offer({ trigger, onPurchased, headingId }: { trigger: PaywallTri
     setBusy(null);
     setPendingMock(null);
     // the server decides: only an entitlement that unlocks this screen counts as done
-    if (out.status === "purchased") {
-      if (unlocks(trigger, out.entitlement)) onPurchased(out.entitlement);
-      else setError(OFFER.paidNotSynced);
-    } else if (out.status === "error") setError(out.message || OFFER.error);
+    if (out.status === "purchased") await settle(out.entitlement, () => setError(OFFER.paidNotSynced));
+    else if (out.status === "error") setError(out.message || OFFER.error);
   };
 
   const restore = async () => {
@@ -70,8 +102,7 @@ export function Offer({ trigger, onPurchased, headingId }: { trigger: PaywallTri
     setBusy("restore");
     try {
       const e = await getPurchases().restore();
-      if (unlocks(trigger, e)) onPurchased(e);
-      else setInfo(e.premiumCredits > 0 ? OFFER.restoreCreditsOnly(e.premiumCredits) : OFFER.restoreNone);
+      await settle(e, () => setInfo(e.premiumCredits > 0 ? OFFER.restoreCreditsOnly(e.premiumCredits) : OFFER.restoreNone));
     } catch (e) {
       setError(e instanceof Error && !e.message.startsWith("sync ") ? e.message : OFFER.restoreError);
     } finally {
@@ -80,7 +111,7 @@ export function Offer({ trigger, onPurchased, headingId }: { trigger: PaywallTri
   };
 
   const choose = (id: PlanId) => (mode === "mock" ? setPendingMock(id) : buy(id));
-  const shown = plansFor(trigger, plans);
+  const shown = plansFor(trigger, plans, callId);
   const chosen = shown.find((p) => p.id === pendingMock);
   const disabled = !ready || !!busy;
 
@@ -97,6 +128,15 @@ export function Offer({ trigger, onPurchased, headingId }: { trigger: PaywallTri
         ))}
       </ul>
       <p className={s.anchor}>{OFFER.anchor(monthlyPrice(plans))}</p>
+
+      {callId && credits > 0 && !chosen && (
+        <div className={s.confirm} data-testid="use-credit">
+          <p className={s.note}>{OFFER.creditNote(credits)}</p>
+          <Button onClick={spendCredit} disabled={disabled}>
+            {busy === "credit" ? OFFER.usingCredit : OFFER.useCredit}
+          </Button>
+        </div>
+      )}
 
       {chosen ? (
         <div className={s.confirm} data-testid="mock-confirm">

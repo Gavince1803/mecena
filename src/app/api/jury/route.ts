@@ -34,7 +34,7 @@ export const POST = route(idempotent(async (req: Request) => {
     const afterImprove = !force && app.revision?.version === app.version;
     const score = () => (force ? scoreApplication(applicationId, { onJudge }) : ensureScore(applicationId, { onJudge }).then((r) => r.score));
     if (cached || afterImprove) return { score: await score(), cached };
-    return { score: await withJuryRun(user.appUserId, applicationId, score), cached: false };
+    return { score: await withJuryRun(user.appUserId, applicationId, score, { costsAi: !isServerAiOff() }), cached: false };
   };
   if (wantsStream(req))
     return juryStream(async (emit) => {

@@ -16,7 +16,7 @@ import { MCP_TOOL_LIMIT } from "@/mcp/http";
 import { proxy } from "@/proxy";
 import { readDb } from "@/server/store";
 import { DEMO_APP_USER_ID } from "@/fixtures";
-import { createUser, ctx, grantPro, loginDemo, req, seedOnboardedCreator } from "../helpers";
+import { createUser, ctx, grantPro, loginDemo, req, seedOnboardedCreator, fillFreeQuota } from "../helpers";
 
 type TextBlock = { type: "text"; text: string };
 const URL_MCP = "http://localhost:3000/api/mcp";
@@ -129,6 +129,7 @@ describe("remote MCP endpoint (/api/mcp)", () => {
   it("the full demo beat: dossier for a call + PDF, with a purchase made in the app (Pro)", async () => {
     await loginDemo();
     await seedOnboardedCreator();
+    await fillFreeQuota(); // the call is beyond the free plan
     const { token } = await newToken();
     const c = await connect(token);
     const denied = await call(c, "get_application_context", { callId: CALL_ID });

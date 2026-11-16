@@ -5,10 +5,12 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 vi.mock("@/components/shell/AppProvider", () => ({ useApp: () => ({ appUserId: "u-paywall" }) }));
 // Route the adapter's fetch calls to the real route handlers (mock purchases mode: no keys in tests).
 const { GET, POST } = await import("@/app/api/entitlements/route");
+const { POST: UNLOCK } = await import("@/app/api/entitlements/unlock/route");
 // The browser sends the session cookie with every same-origin fetch; the routes use the user's own app user id.
 let cookie = "";
 vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
   const r = new Request(`http://localhost${url}`, { ...init, headers: { ...(init?.headers as Record<string, string>), cookie } });
+  if (url.startsWith("/api/entitlements/unlock")) return UNLOCK(r);
   return r.method === "POST" ? POST(r) : GET(r);
 });
 const { Paywall } = await import("@/features/purchases/ui/Paywall");
@@ -25,12 +27,14 @@ beforeEach(async () => {
 
 afterEach(cleanup);
 
+const CALL = "fixture-beca-artes-plasticas";
+
 describe("Paywall (mock purchases)", () => {
   it("sells the outcome with the 3 plans, the anchor and the guarantee", () => {
-    render(<Paywall open trigger="draft_application" onClose={() => undefined} onPurchased={() => undefined} />);
+    render(<Paywall open trigger="draft_application" callId={CALL} onClose={() => undefined} onPurchased={() => undefined} />);
     const text = screen.getByTestId("paywall").textContent ?? "";
     expect(text).toContain("Presenta más solicitudes, mejor preparadas.");
-    expect(text).toContain("Tu solicitud está a un paso");
+    expect(text).toContain("Esta convocatoria no está entre las de tu mes");
     expect(text).toContain("Una consultora se lleva un 10-15 % de tu beca");
     expect(text).toContain("Garantía: si en 90 días no has presentado 3 solicitudes, te devolvemos el dinero.");
     for (const p of ["3,99 €/mes", "35,88 €/año", "15,00 €"]) expect(text).toContain(p);
@@ -51,10 +55,10 @@ describe("Paywall (mock purchases)", () => {
     expect(getEntitlement("u-paywall").pro).toBe(true);
   });
 
-  it("sells the one-off Solicitud premium only where it unlocks something (a draft)", () => {
-    for (const trigger of ["draft_application", "pricing_page"] as const) {
-      const { unmount } = render(<Paywall open trigger={trigger} onClose={() => undefined} onPurchased={() => undefined} />);
-      expect(screen.getByTestId("plan-solicitudPremium").textContent).toContain("Válida para una solicitud completa");
+  it("sells the one-off Solicitud premium only where it unlocks something (one call, or on /pro)", () => {
+    for (const [trigger, callId] of [["draft_application", CALL], ["dossier_variant", CALL], ["jury", CALL], ["pricing_page", undefined]] as const) {
+      const { unmount } = render(<Paywall open trigger={trigger} callId={callId} onClose={() => undefined} onPurchased={() => undefined} />);
+      expect(screen.getByTestId("plan-solicitudPremium").textContent).toContain("Desbloquea una convocatoria");
       unmount();
     }
     for (const trigger of ["match_limit", "dossier_variant", "jury"] as const) {
@@ -75,14 +79,14 @@ describe("Paywall (mock purchases)", () => {
     render(<Paywall open trigger="pricing_page" onClose={() => undefined} onPurchased={() => undefined} />);
     const text = screen.getByTestId("paywall").textContent ?? "";
     expect(text).not.toContain("criterios oficiales");
-    expect(text).toContain("con los criterios de las bases (o estimados cuando no se publican)");
+    expect(text).toContain("Tribunal simulado sin límite con los criterios de las bases");
     expect(text).not.toContain("avisos antes de que cierren");
-    expect(text).toContain("Gratis siempre: tu perfil, tu dossier y 3 convocatorias al mes.");
+    expect(text).toContain("Gratis siempre: tu perfil, tu dossier, 3 convocatorias al mes y un primer borrador");
   });
 
-  it("'Restaurar compras' unlocks when the server already has the purchase, and says so when it has none", async () => {
+  it("'Restaurar compras' unlocks when the server already has the purchase (spending the credit on this call), and says so when it has none", async () => {
     const onPurchased = vi.fn();
-    render(<Paywall open trigger="draft_application" onClose={() => undefined} onPurchased={onPurchased} />);
+    render(<Paywall open trigger="draft_application" callId={CALL} onClose={() => undefined} onPurchased={onPurchased} />);
     const restore = screen.getByTestId("restore-purchases") as HTMLButtonElement;
     await waitFor(() => expect(restore.disabled).toBe(false));
     fireEvent.click(restore);
@@ -91,7 +95,18 @@ describe("Paywall (mock purchases)", () => {
     await saveEntitlement({ appUserId: "u-paywall", pro: false, premiumCredits: 1, source: "mock", updatedAt: nowIso() });
     fireEvent.click(restore);
     await waitFor(() => expect(onPurchased).toHaveBeenCalledTimes(1));
-    expect(onPurchased.mock.calls[0][0]).toMatchObject({ premiumCredits: 1 });
+    expect(onPurchased.mock.calls[0][0]).toMatchObject({ premiumCredits: 0, unlockedCalls: [CALL] });
+  });
+
+  it("with an unused credit, offers to spend it on this call instead of paying again", async () => {
+    await saveEntitlement({ appUserId: "u-paywall", pro: false, premiumCredits: 1, source: "mock", updatedAt: nowIso() });
+    const onPurchased = vi.fn();
+    render(<Paywall open trigger="dossier_variant" callId={CALL} onClose={() => undefined} onPurchased={onPurchased} />);
+    const use = await screen.findByText("Usar mi Solicitud premium en esta convocatoria");
+    await waitFor(() => expect((use as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(use);
+    await waitFor(() => expect(onPurchased).toHaveBeenCalledTimes(1));
+    expect(getEntitlement("u-paywall")).toMatchObject({ premiumCredits: 0, premiumUsed: 1, unlockedCalls: [CALL] });
   });
 
   it("'Restaurar compras' with only premium credits on a Pro screen says what the credits are for", async () => {

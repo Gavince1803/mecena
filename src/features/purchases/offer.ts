@@ -1,5 +1,5 @@
 // Owned by WP-07. The offer (Hormozi style): sell the outcome, stack the value, anchor, guarantee. Spanish from Spain.
-import { FREE_MATCHES_PER_MONTH, JURY_RUNS_PER_APPLICATION, type EntitlementState, type PaywallTrigger, type Plan, type PlanId } from "@/contracts";
+import { FREE_MATCHES_PER_MONTH, hasCallAccess, JURY_RUNS_PER_APPLICATION, type EntitlementState, type PaywallTrigger, type Plan, type PlanId } from "@/contracts";
 
 /**
  * What the free plan includes in the feed, in one place so the paywall, /pro and the feed say the same thing.
@@ -10,16 +10,17 @@ export const FREE_MATCHES_TEXT = `${FREE_MATCHES_PER_MONTH} convocatorias al mes
 export const OFFER = {
   kicker: "Mecena Pro",
   headline: "Presenta más solicitudes, mejor preparadas.",
+  // What Pro sells costs Mecena no AI of its own (ADR-028): it stays true whether or not the server has a model.
   stack: [
     "Todas las convocatorias que encajan contigo, sin límite, y un aviso en la app de las que cierran en los próximos 7 días",
-    "Solicitudes escritas con tus palabras: memoria, declaración y presupuesto",
-    "Tribunal simulado con los criterios de las bases (o estimados cuando no se publican)",
-    "Tu dossier adaptado a cada convocatoria",
+    "Tu dossier adaptado a cada convocatoria: orden, límite de imágenes y textos según sus criterios, en PDF y con las fotos listas",
+    "Tribunal simulado sin límite con los criterios de las bases, con tu propio asistente (Claude u otro conectado por MCP)",
+    "Solicitudes para cualquier convocatoria, no solo las de tu mes",
   ],
   /** Anchor against a consultancy; uses the live monthly price when RevenueCat returns one. */
   anchor: (monthly = "3,99 €") => `Una consultora se lleva un 10-15 % de tu beca. Con Mecena, ${monthly} al mes.`,
   guarantee: "Garantía: si en 90 días no has presentado 3 solicitudes, te devolvemos el dinero.",
-  free: `Gratis siempre: tu perfil, tu dossier y ${FREE_MATCHES_TEXT}.`,
+  free: `Gratis siempre: tu perfil, tu dossier, ${FREE_MATCHES_TEXT} y un primer borrador de solicitud para cada una, con tus palabras.`,
   later: "Ahora no",
   bestValue: "Mejor precio",
   mockNote: "Modo prueba: no se cobra nada.",
@@ -35,19 +36,22 @@ export const OFFER = {
   restoring: "Comprobando tus compras…",
   restoreNone: "No hemos encontrado compras activas en esta cuenta.",
   restoreCreditsOnly: (n: number) =>
-    `${n === 1 ? "Tienes 1 solicitud premium" : `Tienes ${n} solicitudes premium`}: sirve${n === 1 ? "" : "n"} para preparar una solicitud nueva. Esto es de Mecena Pro.`,
+    `${n === 1 ? "Tienes 1 solicitud premium" : `Tienes ${n} solicitudes premium`}: cada una desbloquea una convocatoria. Úsala desde la convocatoria que quieras; esto es de Mecena Pro.`,
   restoreError: "No hemos podido comprobar tus compras ahora mismo. Inténtalo de nuevo en un momento.",
-  premiumReady: "Elige una convocatoria y pulsa «Prepárame la solicitud»: Mecena la escribe con tus palabras.",
+  premiumReady: "Cada una desbloquea una convocatoria: ábrela y, al adaptar el dossier, preparar la solicitud o pasar el tribunal, pulsa «Usar mi Solicitud premium».",
   premiumReadyLink: "Ver mis convocatorias",
   isPro: "Eres Pro. Todo desbloqueado.",
   credits: (n: number) => (n === 1 ? "Tienes 1 solicitud premium disponible." : `Tienes ${n} solicitudes premium disponibles.`),
+  useCredit: "Usar mi Solicitud premium en esta convocatoria",
+  usingCredit: "Desbloqueando la convocatoria…",
+  creditNote: (n: number) => `Tienes ${n === 1 ? "1 solicitud premium" : `${n} solicitudes premium`} sin usar: desbloquea esta convocatoria sin pagar nada más.`,
 } as const;
 
 /** Trigger-specific subtitle: why the paywall appeared right now. */
 export const TRIGGER_SUBTITLE: Record<PaywallTrigger, string> = {
-  draft_application: "Tu solicitud está a un paso: Mecena la escribe con lo que ya nos has contado.",
+  draft_application: "Esta convocatoria no está entre las de tu mes: desbloquéala para preparar su solicitud.",
   match_limit: "Hay más convocatorias que encajan contigo. Desbloquéalas todas.",
-  jury: "Pasa tu solicitud por el tribunal antes de presentarla.",
+  jury: "Pasa tu solicitud por el tribunal todas las veces que quieras antes de presentarla.",
   dossier_variant: "Adapta tu dossier a lo que pide cada convocatoria.",
   pricing_page: "Tú creas. Mecena se encarga del papeleo.",
 };
@@ -61,7 +65,7 @@ export const PLANS: Plan[] = [
     title: "Solicitud premium",
     priceText: "15,00 €",
     kind: "one_off",
-    bullets: ["Válida para una solicitud completa", `con ${JURY_RUNS_PER_APPLICATION} pasadas por el tribunal`, "sin suscripción"],
+    bullets: ["Desbloquea una convocatoria", `su dossier adaptado y ${JURY_RUNS_PER_APPLICATION} pasadas por el tribunal`, "sin suscripción"],
   },
 ];
 
@@ -91,20 +95,23 @@ export function plansWithPrices(prices: Partial<Record<PlanId, { amount: number;
   });
 }
 
-/** Triggers where a one-off Solicitud premium actually unlocks something (a new draft). */
-const PREMIUM_TRIGGERS: readonly PaywallTrigger[] = ["draft_application", "pricing_page"];
-
 /**
- * The plans worth offering for this trigger: the one-off Solicitud premium only unlocks a draft, so it is not sold
- * where it would unlock nothing (more matches, dossier variants, deep research, more jury runs).
+ * The plans worth offering: a Solicitud premium unlocks one specific call, so it is sold where the paywall was opened
+ * for a call (`callId`: its draft, adapted dossier or jury) and on /pro, not where it would unlock nothing (more
+ * matches in the feed, deep research).
  */
-export function plansFor(trigger: PaywallTrigger, plans: Plan[]): Plan[] {
-  return PREMIUM_TRIGGERS.includes(trigger) ? plans : plans.filter((p) => p.kind !== "one_off");
+export function plansFor(trigger: PaywallTrigger, plans: Plan[], callId?: string): Plan[] {
+  return callId || trigger === "pricing_page" ? plans : plans.filter((p) => p.kind !== "one_off");
 }
 
-/** Whether this entitlement unlocks what the paywall was opened for (after a purchase or "Restaurar compras"). */
-export function unlocks(trigger: PaywallTrigger, e: Pick<EntitlementState, "pro" | "premiumCredits">): boolean {
-  return e.pro || (PREMIUM_TRIGGERS.includes(trigger) && e.premiumCredits > 0);
+/**
+ * Whether this entitlement unlocks what the paywall was opened for (after a purchase, "Restaurar compras" or using a
+ * credit): Pro, or the call it was opened for unlocked with a Solicitud premium; on /pro, any unused credit.
+ */
+export function unlocks(trigger: PaywallTrigger, e: Pick<EntitlementState, "pro" | "premiumCredits" | "unlockedCalls">, callId?: string): boolean {
+  if (e.pro) return true;
+  if (callId) return hasCallAccess(e, callId);
+  return trigger === "pricing_page" && e.premiumCredits > 0;
 }
 
 /** "3,99 €" out of "3,99 €/mes" (for the anchor). */

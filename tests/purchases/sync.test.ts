@@ -4,11 +4,11 @@ import {
   DEMO_PRODUCT_ID,
   entitlementFromSubscriber,
   PurchaseVerificationError,
-  reserveDraftCredit,
   resetPurchaseSyncState,
   resolveEntitlement,
   syncEntitlement,
   type Subscriber,
+  unlockCall,
 } from "@/features/purchases/server";
 import { DEMO_APP_USER_ID } from "@/fixtures";
 import { getEntitlement, nowIso, saveEntitlement } from "@/server/store";
@@ -60,12 +60,12 @@ describe("syncEntitlement with REVENUECAT_SECRET_API_KEY (REST re-verification)"
     expect((await syncEntitlement({ appUserId: USER }, stub({ non_subscriptions: { mecena_solicitud_premium: [t1] } }))).premiumCredits).toBe(1);
     // same customer again → still 1 (a transaction is never counted twice)
     expect((await syncEntitlement({ appUserId: USER }, stub({ non_subscriptions: { mecena_solicitud_premium: [t1, t1] } }))).premiumCredits).toBe(1);
-    // spend it on a draft, then re-sync: RevenueCat still lists t1, but it is used
-    await reserveDraftCredit(USER);
+    // spend it on a call, then re-sync: RevenueCat still lists t1, but it is used (and the call stays unlocked)
+    await unlockCall(USER, "call-a");
     expect((await syncEntitlement({ appUserId: USER }, stub({ non_subscriptions: { mecena_solicitud_premium: [t1] } }))).premiumCredits).toBe(0);
     // a second purchase → 1 again
     const again = await syncEntitlement({ appUserId: USER }, stub({ non_subscriptions: { mecena_solicitud_premium: [t1, tx("t2", 0)] } }));
-    expect(again).toMatchObject({ premiumCredits: 1, premiumUsed: 1 });
+    expect(again).toMatchObject({ premiumCredits: 1, premiumUsed: 1, unlockedCalls: ["call-a"] });
   });
 
   it("a claim-based legacy state cannot keep credits that RevenueCat does not know about", async () => {
@@ -132,9 +132,9 @@ describe("lazy re-sync on read", () => {
     expect(await resolveEntitlement(USER)).toMatchObject({ pro: false, premiumCredits: 0 });
   });
 
-  it("a paid purchase whose sync failed still unlocks the draft: the gate asks RevenueCat first", async () => {
+  it("a paid purchase whose sync failed still unlocks the call: the gate asks RevenueCat first", async () => {
     vi.stubGlobal("fetch", stub({ non_subscriptions: { mecena_solicitud_premium: [tx("t1")] } }));
-    expect((await reserveDraftCredit(USER)).usedCredit).toBe(true);
+    expect((await unlockCall(USER, "call-a")).unlockedCalls).toEqual(["call-a"]);
     expect(getEntitlement(USER)).toMatchObject({ premiumCredits: 0, premiumUsed: 1 });
   });
 });
@@ -168,7 +168,7 @@ describe("review fixes", () => {
     vi.stubGlobal("fetch", async () => new Response("down", { status: 503 }));
     expect(await resolveEntitlement(USER)).toMatchObject({ pro: false, premiumCredits: 0 });
     resetPurchaseSyncState();
-    await expect(reserveDraftCredit(USER)).rejects.toThrow();
+    await expect(unlockCall(USER, "call-a")).rejects.toThrow();
     expect(getEntitlement(USER)).toMatchObject({ premiumCredits: 999 }); // untouched: premiumUsed not invented
     expect(getEntitlement(USER).premiumUsed).toBeUndefined();
   });

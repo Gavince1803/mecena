@@ -5,7 +5,7 @@ import { POST as postJury } from "@/app/api/jury/route";
 import { POST as postImprove } from "@/app/api/jury/improve/route";
 import { closesIn, closingSoon } from "@/features/purchases/alerts";
 import { OFFER, PLANS, plansFor, TRIGGER_SUBTITLE, unlocks } from "@/features/purchases/offer";
-import { syncEntitlement } from "@/features/purchases/server";
+import { syncEntitlement, unlockCall } from "@/features/purchases/server";
 import { DEMO_APP_USER_ID, DEMO_CREATOR_ID, fixtureCalls } from "@/fixtures";
 import { getEntitlement } from "@/server/store";
 import { loginDemo, req, seedOnboardedCreator } from "../helpers";
@@ -19,8 +19,8 @@ describe("the Hormozi offer (Spanish from Spain)", () => {
     ]);
     expect(OFFER.anchor()).toBe("Una consultora se lleva un 10-15 % de tu beca. Con Mecena, 3,99 € al mes.");
     expect(OFFER.guarantee).toBe("Garantía: si en 90 días no has presentado 3 solicitudes, te devolvemos el dinero.");
-    expect(OFFER.free).toBe("Gratis siempre: tu perfil, tu dossier y 3 convocatorias al mes.");
-    expect(TRIGGER_SUBTITLE.draft_application).toContain("Tu solicitud está a un paso");
+    expect(OFFER.free).toBe("Gratis siempre: tu perfil, tu dossier, 3 convocatorias al mes y un primer borrador de solicitud para cada una, con tus palabras.");
+    expect(TRIGGER_SUBTITLE.draft_application).toContain("Esta convocatoria no está entre las de tu mes");
     expect(PLANS.find((p) => p.id === "solicitudPremium")!.bullets.join(" ")).toContain(`${JURY_RUNS_PER_APPLICATION} pasadas por el tribunal`);
   });
 
@@ -30,16 +30,19 @@ describe("the Hormozi offer (Spanish from Spain)", () => {
     expect(all).not.toMatch(/criterios oficiales|avisos antes de que cierren/);
   });
 
-  it("the one-off plan is offered only where it unlocks a draft", () => {
-    expect(plansFor("draft_application", PLANS).map((p) => p.id)).toContain("solicitudPremium");
+  it("the one-off plan is offered where the paywall is about one call, and on /pro", () => {
+    for (const t of ["draft_application", "dossier_variant", "jury"] as const) expect(plansFor(t, PLANS, "call-a").map((p) => p.id)).toContain("solicitudPremium");
     expect(plansFor("pricing_page", PLANS).map((p) => p.id)).toContain("solicitudPremium");
     for (const t of ["match_limit", "dossier_variant", "jury"] as const) expect(plansFor(t, PLANS).map((p) => p.id)).toEqual(["proAnnual", "proMonthly"]);
   });
 
-  it("a premium credit unlocks a draft, not more matches", () => {
-    const credit = { pro: false, premiumCredits: 1 };
-    expect(unlocks("draft_application", credit)).toBe(true);
-    expect(unlocks("match_limit", credit)).toBe(false);
+  it("a premium credit unlocks the call it was spent on, not more matches", () => {
+    const unused = { pro: false, premiumCredits: 1 };
+    expect(unlocks("dossier_variant", unused, "call-a")).toBe(false); // not spent on it yet
+    expect(unlocks("dossier_variant", { pro: false, premiumCredits: 0, unlockedCalls: ["call-a"] }, "call-a")).toBe(true);
+    expect(unlocks("dossier_variant", { pro: false, premiumCredits: 0, unlockedCalls: ["call-a"] }, "call-b")).toBe(false);
+    expect(unlocks("pricing_page", unused)).toBe(true);
+    expect(unlocks("match_limit", unused)).toBe(false);
     expect(unlocks("match_limit", { pro: true, premiumCredits: 0 })).toBe(true);
   });
 });
@@ -81,6 +84,7 @@ describe("jury routes: Pro, or the runs included with a premium application", ()
   it(`after ${JURY_RUNS_PER_APPLICATION} runs without Pro the jury answers 402; Pro unlocks it again`, async () => {
     await seedOnboardedCreator();
     await syncEntitlement({ appUserId: DEMO_APP_USER_ID, purchasedProductId: "mecena_solicitud_premium" });
+    await unlockCall(DEMO_APP_USER_ID, "fixture-beca-artes-plasticas");
     const { application } = await (await postApp(req("/api/applications", { body: { callId: "fixture-beca-artes-plasticas", profileId: DEMO_CREATOR_ID } }))).json();
     const body = { applicationId: application.id };
     const first = await (await postJury(req("/api/jury", { body }))).json();

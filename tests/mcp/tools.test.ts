@@ -2,13 +2,13 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { JURY_RUNS_PER_APPLICATION, MCP_TOOL_NAMES, toolSchemas } from "@/contracts";
-import { resolveEntitlement } from "@/features/purchases/server";
+import { FREE_JURY_RUNS_PER_APPLICATION, JURY_RUNS_PER_APPLICATION, MCP_TOOL_NAMES, toolSchemas } from "@/contracts";
+import { resolveEntitlement, unlockCall } from "@/features/purchases/server";
 import { getAi } from "@/server/ai";
 import { runTool } from "@/tools/registry";
 import { createMcpServer, type McpServerOptions } from "@/mcp/server";
 import { DEMO_APP_USER_ID } from "@/fixtures";
-import { createUser, DEMO_EMAIL, grantCredit, grantPro, loginDemo, seedOnboardedCreator } from "../helpers";
+import { createUser, DEMO_EMAIL, fillFreeQuota, grantCredit, grantPro, loginDemo, seedOnboardedCreator } from "../helpers";
 
 type TextBlock = { type: "text"; text: string };
 const CALL_ID = "fixture-beca-artes-plasticas";
@@ -95,12 +95,13 @@ describe("MCP server tools", () => {
     }
   });
 
-  it("get_application_context without entitlement is an error with the pricing URL; with grantPro() it returns the context", async () => {
+  it("get_application_context for a call beyond the free plan is an error with the pricing URL; with grantPro() it returns the context", async () => {
     await seedOnboardedCreator();
+    await fillFreeQuota();
     const c = await connect();
     const denied = await call(c, "get_application_context", { callId: CALL_ID });
     expect(denied.isError).toBe(true);
-    expect(denied.blocks[0].text).toMatch(/^Necesitas Mecena Pro/);
+    expect(denied.blocks[0].text).toMatch(/necesitas Mecena Pro o una Solicitud premium/);
     expect(denied.blocks[0].text).toContain("http://localhost:3000/pro");
 
     await grantPro(DEMO_APP_USER_ID); // a purchase on the phone is stored for the account's appUserId and unlocks MCP
@@ -166,13 +167,14 @@ describe("MCP server tools", () => {
     expect(reread.existing.version).toBe(2);
   });
 
-  it("a first save uses one Solicitud premium credit; later saves are free", async () => {
+  it("the free plan saves drafts for its calls without spending anything; a credit is never used by saving", async () => {
     await seedOnboardedCreator();
     await grantCredit();
     const c = await connect();
     const section = [{ key: "memoria", title: "Memoria", body: "Texto." }];
-    expect((await call(c, "save_application_draft", { callId: CALL_ID, sections: section })).isError).toBe(false);
-    expect((await resolveEntitlement(DEMO_APP_USER_ID)).premiumCredits).toBe(0);
+    const first = json((await call(c, "save_application_draft", { callId: CALL_ID, sections: section })).blocks);
+    expect(first.application.plan).toBe("free");
+    expect((await resolveEntitlement(DEMO_APP_USER_ID)).premiumCredits).toBe(1);
     expect((await call(c, "save_application_draft", { callId: CALL_ID, sections: section })).isError).toBe(false);
   });
 
@@ -219,12 +221,27 @@ describe("MCP server tools", () => {
     expect(json(clamped.blocks).score.total).toBe(100);
   });
 
-  it("without Pro, the jury runs an application includes are counted on save and enforced on the brief", async () => {
+  it("without Pro, the jury runs are counted on save and enforced on the brief: 1 on the free plan, more with a premium for the call", async () => {
     await seedOnboardedCreator();
     await grantCredit();
     const c = await connect();
     const appId = json((await call(c, "save_application_draft", { callId: CALL_ID, sections: [{ key: "memoria", title: "Memoria", body: "Texto." }] })).blocks).application.id;
-    for (let run = 0; run < JURY_RUNS_PER_APPLICATION; run++) {
+    const runOnce = async () => {
+      const brief = json((await call(c, "get_jury_brief", { applicationId: appId })).blocks);
+      const verdicts = brief.judges.map((j: { id: string }) => ({
+        judgeId: j.id,
+        scores: brief.criteria.map((cr: { id: string }) => ({ criterionId: cr.id, points: 1, comment: "", fixes: [] })),
+        overall: "",
+      }));
+      expect((await call(c, "save_jury_score", { applicationId: appId, applicationVersion: 1, verdicts })).isError).toBe(false);
+      return brief.runsLeft as number;
+    };
+    expect(await runOnce()).toBe(FREE_JURY_RUNS_PER_APPLICATION);
+    const freeDone = await call(c, "get_jury_brief", { applicationId: appId });
+    expect(freeDone.isError).toBe(true);
+    expect(freeDone.blocks[0].text).toMatch(/plan gratuito/);
+    await unlockCall(DEMO_APP_USER_ID, CALL_ID); // spend the Solicitud premium on this call
+    for (let run = FREE_JURY_RUNS_PER_APPLICATION; run < JURY_RUNS_PER_APPLICATION; run++) {
       const brief = json((await call(c, "get_jury_brief", { applicationId: appId })).blocks);
       expect(brief.runsLeft).toBe(JURY_RUNS_PER_APPLICATION - run);
       const verdicts = brief.judges.map((j: { id: string }) => ({

@@ -6,7 +6,7 @@
  */
 import { FREE_MATCHES_PER_MONTH, PaymentRequiredError, type Call, type MatchResult, type ToolContext } from "@/contracts";
 import { applyFreeMatchLimit, canSeeCall } from "@/features/matching/usage";
-import { resolveEntitlement } from "@/features/purchases/server";
+import { canUseCall, resolveEntitlement } from "@/features/purchases/server";
 import { getCall } from "@/server/store";
 
 export const MATCH_LIMIT_MESSAGE = `Con el plan gratuito ves tus ${FREE_MATCHES_PER_MONTH} convocatorias del mes; para ver esta y el resto necesitas Mecena Pro`;
@@ -33,7 +33,7 @@ export async function requireCallVisible(ctx: ToolContext, profileId: string, ca
   if (!(await canSeeCall({ appUserId: ctx.appUserId, profileId, callId }))) throw new PaymentRequiredError(MATCH_LIMIT_MESSAGE);
 }
 
-/** Whether a call variant of the dossier (a Pro feature) may be built for this caller. */
-export async function canAdaptDossier(ctx: ToolContext): Promise<boolean> {
-  return (await resolveEntitlement(ctx.appUserId)).pro;
+/** Whether a call variant of the dossier may be built for this caller: Pro, or the call unlocked with a Solicitud premium. */
+export async function canAdaptDossier(ctx: ToolContext, callId: string): Promise<boolean> {
+  return canUseCall(ctx.appUserId, callId);
 }

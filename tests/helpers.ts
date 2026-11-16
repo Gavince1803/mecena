@@ -72,6 +72,15 @@ export async function grantPro(appUserId = DEMO_APP_USER_ID) {
   return saveEntitlement({ appUserId, pro: true, premiumCredits: 0, source: "mock", updatedAt: nowIso() });
 }
 
+/**
+ * Spend the month's free matches of this profile on other calls, so any fixture call is beyond the free plan (its draft,
+ * dossier variant and jury need Pro or a Solicitud premium for it).
+ */
+export async function fillFreeQuota(appUserId = DEMO_APP_USER_ID, profileId = DEMO_CREATOR_ID) {
+  const { unlockCalls } = await import("@/features/matching/usage");
+  return unlockCalls({ appUserId, profileId }, ["other-call-1", "other-call-2", "other-call-3"]);
+}
+
 /** One Solicitud premium credit, without Pro. */
 export async function grantCredit(appUserId = DEMO_APP_USER_ID) {
   return saveEntitlement({ appUserId, pro: false, premiumCredits: 1, source: "mock", updatedAt: nowIso() });

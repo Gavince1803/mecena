@@ -4,9 +4,9 @@ import { PaymentRequiredError, TOOL_NAMES } from "@/contracts";
 import { DEMO_APP_USER_ID, DEMO_CREATOR_ID } from "@/fixtures";
 import { runTool, isToolName } from "@/tools/registry";
 import { processTurn } from "@/features/onboarding/service";
-import { syncEntitlement } from "@/features/purchases/server";
+import { syncEntitlement, unlockCall } from "@/features/purchases/server";
 import { improveApplication } from "@/features/jury/service";
-import { demoToolCtx, grantPro, seedOnboardedCreator } from "../helpers";
+import { demoToolCtx, fillFreeQuota, grantPro, seedOnboardedCreator } from "../helpers";
 
 
 describe("demo path baseline (scaffold)", () => {
@@ -33,10 +33,12 @@ describe("demo path baseline (scaffold)", () => {
     expect(pdf.url).toContain("/api/dossier/pdf");
   });
 
-  it("draft_application requires an entitlement (paywall), then works", async () => {
+  it("draft_application beyond the free plan needs an entitlement (paywall); a Solicitud premium for the call unlocks it", async () => {
     await seedOnboardedCreator();
+    await fillFreeQuota();
     await expect(runTool("draft_application", { callId: "fixture-beca-artes-plasticas" }, await demoToolCtx())).rejects.toBeInstanceOf(PaymentRequiredError);
     await syncEntitlement({ appUserId: DEMO_APP_USER_ID, purchasedProductId: "mecena_solicitud_premium" });
+    await unlockCall(DEMO_APP_USER_ID, "fixture-beca-artes-plasticas");
     const { application } = await runTool("draft_application", { callId: "fixture-beca-artes-plasticas" }, await demoToolCtx());
     expect(application.version).toBe(1);
   });

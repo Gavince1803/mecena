@@ -59,7 +59,7 @@ export function callStatusText(call: Call): string {
   }
 }
 
-const proNote = (what: string) => `${what} es de Mecena Pro: ${pricingUrl()}`;
+const proNote = (what: string) => `${what} es de Mecena Pro (o de una Solicitud premium para esta convocatoria): ${pricingUrl()}`;
 
 type Summarizers = { [N in ToolName]: (out: ToolOutput<N>) => string };
 

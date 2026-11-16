@@ -32,7 +32,7 @@ import { syncEntitlement } from "@/features/purchases/server";
 import { runTool } from "@/tools/registry";
 import { toolContextFor } from "@/server/auth";
 import { exportsDir, getEntitlement, getProfile, getTranscript, listJuryScores, readDb, uploadsDir } from "@/server/store";
-import { ctx, createUser, req } from "../helpers";
+import { ctx, createUser, req, fillFreeQuota } from "../helpers";
 
 const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 const CALL = "fixture-beca-artes-plasticas";
@@ -143,6 +143,7 @@ describe("two accounts cannot see each other", () => {
     expect(getEntitlement(a.user.appUserId).premiumCredits).toBe(1);
     // drafting with B's appUserId in the body still needs A's own entitlement
     const fresh = await createUser("cris@example.com");
+    await fillFreeQuota(fresh.user.appUserId, fresh.user.activeProfileId); // the call is beyond A's free plan
     const denied = await postAppRoute(req("/api/applications", { cookie: fresh.cookie, body: { callId: CALL, appUserId: b.user.appUserId } }));
     expect(denied.status).toBe(402);
     // the free plan's lock follows the account too

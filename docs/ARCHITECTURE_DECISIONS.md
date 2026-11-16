@@ -70,6 +70,7 @@ with Context describing the limits of ADR-003, and ADR-003's status changed to "
 | [025](#adr-025-stretch-features-justification-and-b2b-panel-with-the-money-maths-in-code) | Stretch features: justification and B2B panel, with the money maths in code | Accepted |
 | [026](#adr-026-over-mcp-the-users-own-claude-does-the-ai-work) | Over MCP, the user's own Claude does the AI work | Accepted |
 | [027](#adr-027-the-app-runs-without-ai-on-the-server) | The app runs without AI on the server | Accepted |
+| [028](#adr-028-pro-sells-what-costs-no-ai-a-solicitud-premium-unlocks-one-call) | Pro sells what costs no AI; a Solicitud premium unlocks one call | Accepted |
 
 ---
 
@@ -784,3 +785,37 @@ for the jury, and shows a score saved over MCP.
 **Evidence.** `src/contracts/env.ts`, `src/contracts/ai.ts`, `src/server/ai/index.ts`, `src/server/ai/llm.ts`,
 `src/features/drafting/assistant.ts`, `src/features/drafting/reply.ts`, `src/features/drafting/ui/AssistantCard.tsx`,
 `src/features/drafting/ui/GapsCard.tsx`, `tests/drafting/no-server-ai.test.ts`, PR #83.
+
+---
+
+## ADR-028: Pro sells what costs no AI; a Solicitud premium unlocks one call
+
+- **Status:** Accepted
+- **Date:** 2026-11-16
+
+**Context.** Pro and the Solicitud premium were priced around Mecena's own AI: Pro sold drafts and the in-app jury, and
+a premium credit bought one AI draft. After ADR-026 and ADR-027 the server may have no AI at all, so the in-app jury and
+deep research can be unavailable, and a draft can be the rule-based one, which costs nothing. Selling them as before
+would promise features that are not there, and charging for a draft that costs nothing keeps people out of the core
+loop. RevenueCat Web Billing (ADR-015) works and stays.
+
+**Decision.** The products and prices do not change; what they unlock does:
+- Free: profile, general dossier, 3 matches a month and the rule-based draft of each (marked `plan: "free"`), plus one
+  jury run per application when the user's own assistant does it (MCP). No run on Mecena's model.
+- Pro: every match, the adapted dossier for any call, drafts for any call (Mecena's model writes them when the server has
+  one), unlimited jury runs, the deadline alert, and deep research when the server has AI.
+- Solicitud premium: one credit unlocks one specific call (`EntitlementState.unlockedCalls`, spent with `unlockCall`
+  through `POST /api/entitlements/unlock`): everything Pro gives, for that call only, with 5 jury runs. The paywall gets
+  the call it was opened for (`callId`) and offers the one-off there, or the user's unused credit.
+The rules live in `hasCallAccess` (contracts), `canUseCall`, `juryRunLimit` and `draftAccess`, and the feed, the call
+detail, the dossier routes, the MCP tools and the jury routes use them.
+
+**Consequences.**
+- The offer copy is true whether or not the server has AI. With AI on, a free user still gets only the rule-based draft.
+- Credits are no longer spent by drafting; applications drafted before this change (all paid) keep their 5 jury runs.
+- A locked match in the feed has no id the user can see, so a credit is spent from a call they can open (its page, draft,
+  dossier or jury), not from the feed.
+
+**Evidence.** `src/contracts/purchases.ts`, `src/features/purchases/server.ts`, `src/features/purchases/offer.ts`,
+`src/features/purchases/ui/Offer.tsx`, `src/features/drafting/service.ts`, `src/app/api/entitlements/unlock/route.ts`,
+`tests/purchases/server.test.ts`, `tests/purchases/paywall.test.tsx`, PR #84.

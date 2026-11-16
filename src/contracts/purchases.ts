@@ -1,7 +1,8 @@
 /**
  * Monetisation contract (RevenueCat Web Billing, sandbox for the demo).
  * Client side: a PurchasesAdapter (real = @revenuecat/purchases-js, mock = in-memory + /api/entitlements).
- * Server side: EntitlementState in the store; draft_application requires pro OR premiumCredits > 0.
+ * Server side: EntitlementState in the store. Free: the rule-based draft of a call the free plan shows. Pro: everything.
+ * Solicitud premium: one credit unlocks one call (everything Pro gives, for that call: see unlockCall).
  */
 import type { EntitlementState } from "./domain";
 
@@ -54,9 +55,13 @@ export type PaywallTrigger = "draft_application" | "match_limit" | "jury" | "dos
 
 export const FREE_MATCHES_PER_MONTH = 3;
 
-/** Without Pro, each application (unlocked with a Solicitud premium credit) includes this many simulated-jury runs. */
+/** Simulated-jury runs included for an application of a call unlocked with a Solicitud premium (Pro: unlimited). */
 export const JURY_RUNS_PER_APPLICATION = 5;
 
-export function canDraft(e: Pick<EntitlementState, "pro" | "premiumCredits">): boolean {
-  return e.pro || e.premiumCredits > 0;
+/** On the free plan, jury runs per application that cost Mecena no AI (run by the user's own assistant over MCP). */
+export const FREE_JURY_RUNS_PER_APPLICATION = 1;
+
+/** Pro, or this call was unlocked with a Solicitud premium credit. */
+export function hasCallAccess(e: Pick<EntitlementState, "pro" | "unlockedCalls"> | undefined, callId: string): boolean {
+  return !!e && (e.pro || (e.unlockedCalls ?? []).includes(callId));
 }

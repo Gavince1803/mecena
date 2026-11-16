@@ -3,7 +3,7 @@
 // else gets the plain (free) dossier. The design (design agent) is free.
 import { pdfLayoutNotice, pdfReport, pdfSizeNote, renderDossierPdf } from "@/features/dossier/service";
 import { slug } from "@/features/dossier/model";
-import { resolveEntitlement } from "@/features/purchases/server";
+import { canUseCall } from "@/features/purchases/server";
 import { json, route } from "@/server/http";
 import { requireProfile } from "@/server/auth";
 import { limitAi } from "@/server/ai-limits";
@@ -16,7 +16,8 @@ export const GET = route(async (req: Request) => {
   // Only the owner gets the PDF (the link carries a profileId, but without the owner's session it is a 401/404).
   const { user, profile } = await requireProfile(req, sp.get("profileId"));
   const callId = sp.get("callId") || undefined;
-  const pro = callId ? (await resolveEntitlement(user.appUserId).catch(() => undefined))?.pro === true : false;
+  // The call variant: Pro, or this call unlocked with a Solicitud premium.
+  const pro = callId ? await canUseCall(user.appUserId, callId).catch(() => false) : false;
   if (callId && pro) limitAi(user, "dossier-variant"); // the call variant is written by Claude (cached)
   // The design comes from the design agent (saved per profile); ?estilo forces a starting point.
   const bytes = await renderDossierPdf({ profileId: profile.id, callId: pro ? callId : undefined, style: sp.get("estilo") });

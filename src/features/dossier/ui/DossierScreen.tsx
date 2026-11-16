@@ -355,10 +355,10 @@ export function DossierScreen() {
           {data.adapted ? null : (
             <>
               <p className="dossier-variant__lock">
-                Debajo tienes tu dossier general, gratis. Con Pro lo reescribimos para esta convocatoria: en el orden y con los criterios que puntúa el tribunal, con tus
-                propias palabras y marcando lo que falta. También en PDF.
+                Debajo tienes tu dossier general, gratis. Con Pro o una Solicitud premium para esta convocatoria lo adaptamos a ella: en el orden y con los criterios que
+                puntúa el tribunal, con tus propias palabras y marcando lo que falta. También en PDF.
               </p>
-              <Button onClick={() => setPaywall(true)}>Adaptar mi dossier con Pro</Button>
+              <Button onClick={() => setPaywall(true)}>Adaptar mi dossier a esta convocatoria</Button>
             </>
           )}
         </aside>
@@ -396,6 +396,7 @@ export function DossierScreen() {
       <Paywall
         open={paywall}
         trigger="dossier_variant"
+        callId={callId}
         onClose={() => setPaywall(false)}
         onPurchased={() => {
           setPaywall(false);

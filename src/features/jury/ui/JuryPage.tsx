@@ -224,6 +224,7 @@ export function JuryPage({ applicationId }: { applicationId: string }) {
     <Paywall
       open={paywall}
       trigger="jury"
+      callId={app?.callId ?? current?.callId}
       onClose={() => setPaywall(false)}
       onPurchased={() => {
         setPaywall(false);

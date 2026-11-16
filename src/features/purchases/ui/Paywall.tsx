@@ -1,6 +1,7 @@
 "use client";
-// Owned by WP-07. Contract for other WPs: render <Paywall open trigger onClose onPurchased />; onPurchased fires after
-// the entitlement is synced server-side, so the caller can simply retry its request.
+// Owned by WP-07. Contract for other WPs: render <Paywall open trigger callId? onClose onPurchased />; onPurchased fires
+// after the entitlement is synced server-side, so the caller can simply retry its request. `callId`: the call the
+// paywall is about, so a Solicitud premium (bought now or unused) unlocks that call.
 import { useEffect, useId } from "react";
 import type { EntitlementState, PaywallTrigger } from "@/contracts";
 import { OFFER } from "../offer";
@@ -11,11 +12,13 @@ import { Icon } from "@/components/ui/icons";
 export interface PaywallProps {
   open: boolean;
   trigger: PaywallTrigger;
+  /** The call this paywall is about: a Solicitud premium unlocks exactly this one. */
+  callId?: string;
   onClose(): void;
   onPurchased(entitlement: EntitlementState): void;
 }
 
-export function Paywall({ open, trigger, onClose, onPurchased }: PaywallProps) {
+export function Paywall({ open, trigger, callId, onClose, onPurchased }: PaywallProps) {
   const headingId = useId();
   useEffect(() => {
     if (!open) return;
@@ -37,7 +40,7 @@ export function Paywall({ open, trigger, onClose, onPurchased }: PaywallProps) {
         <button type="button" className={s.close} onClick={onClose} aria-label={OFFER.later}>
           <Icon name="close" size={18} />
         </button>
-        <Offer trigger={trigger} onPurchased={onPurchased} headingId={headingId} />
+        <Offer trigger={trigger} callId={callId} onPurchased={onPurchased} headingId={headingId} />
       </div>
     </>
   );

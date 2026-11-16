@@ -105,13 +105,13 @@ describe("search_calls: free limit and status", () => {
 });
 
 describe("dossier call variant is Pro", () => {
-  it("build_dossier without Pro: general dossier with the call's notes, says the adaptation is Pro, no AI run", async () => {
+  it("build_dossier without Pro: general dossier with the call's notes, says the adaptation is Pro (or a premium for the call), no AI run", async () => {
     const r = await call("build_dossier", { callId: BECA });
     expect(r.isError).toBe(false);
     expect(r.json.adapted).toBe(false);
     expect(r.json.dossier.variant.callId).toBe(BECA); // notes as a preview, like the /dossier page shows
     expect(r.text).not.toContain("Adaptado a la convocatoria");
-    expect(r.text).toContain("es de Mecena Pro: http://localhost:3000/pro");
+    expect(r.text).toContain("es de Mecena Pro (o de una Solicitud premium para esta convocatoria): http://localhost:3000/pro");
     expect(r.text).toContain(r.json.url);
     expect(readDb().variantCache).toHaveLength(0);
   });

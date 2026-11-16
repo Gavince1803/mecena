@@ -5,7 +5,7 @@ import { draftingAi } from "@/features/drafting/ai";
 import { buildChecklist, fitBudget } from "@/features/drafting/rules";
 import { draftApplication, draftSources, findDraft } from "@/features/drafting/service";
 import { readDb } from "@/server/store";
-import { grantPro, seedOnboardedCreator } from "../helpers";
+import { fillFreeQuota, grantPro, seedOnboardedCreator } from "../helpers";
 
 const beca = fixtureCalls.find((c) => c.id === "fixture-beca-artes-plasticas")!;
 const digital = fixtureCalls.find((c) => c.id === "fixture-digitalizacion-pymes")!;
@@ -76,8 +76,9 @@ describe("rules", () => {
 });
 
 describe("draftApplication service", () => {
-  it("402 without Pro or credit; with Pro it drafts once and reuses the draft", async () => {
+  it("402 for a call beyond the free plan without Pro or credit; with Pro it drafts once and reuses the draft", async () => {
     await seedOnboardedCreator();
+    await fillFreeQuota();
     await expect(draftApplication({ callId: beca.id, profileId: DEMO_CREATOR_ID }, { caller: "app", appUserId: DEMO_APP_USER_ID })).rejects.toBeInstanceOf(PaymentRequiredError);
     expect(findDraft({ callId: beca.id, profileId: DEMO_CREATOR_ID })).toBeNull();
 

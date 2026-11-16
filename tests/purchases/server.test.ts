@@ -1,11 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { JURY_RUNS_PER_APPLICATION, PaymentRequiredError } from "@/contracts";
+import { FREE_JURY_RUNS_PER_APPLICATION, JURY_RUNS_PER_APPLICATION, PaymentRequiredError } from "@/contracts";
 import { GET, POST } from "@/app/api/entitlements/route";
 import { draftingAi } from "@/features/drafting/ai";
 import { draftApplication } from "@/features/drafting/service";
-import { requireDraftEntitlement, reserveDraftCredit, resolveEntitlement, syncEntitlement, verificationMode, withJuryRun } from "@/features/purchases/server";
+import { resolveEntitlement, syncEntitlement, unlockCall, verificationMode, withJuryRun } from "@/features/purchases/server";
+import { canSeeCall, unlockCalls } from "@/features/matching/usage";
+import { POST as postUnlock } from "@/app/api/entitlements/unlock/route";
+import { GET as getDossier } from "@/app/api/dossier/route";
 import { DEMO_APP_USER_ID, DEMO_CREATOR_ID } from "@/fixtures";
-import { getEntitlement, nowIso, readDb, saveEntitlement } from "@/server/store";
+import { getEntitlement, nowIso, readDb, saveApplication, saveEntitlement } from "@/server/store";
 import { createUser, grantPro, loginDemo, req, seedOnboardedCreator } from "../helpers";
 
 // Route handlers need a session: run as the demo account (owns the fixture profiles).
@@ -36,100 +39,151 @@ describe("verification mode", () => {
   });
 });
 
-describe("draft gate", () => {
-  it("no plan → PaymentRequiredError", async () => {
-    await expect(requireDraftEntitlement("nobody")).rejects.toBeInstanceOf(PaymentRequiredError);
-    await expect(reserveDraftCredit("nobody")).rejects.toBeInstanceOf(PaymentRequiredError);
+describe("Solicitud premium: one credit unlocks one call", () => {
+  it("no credit → PaymentRequiredError", async () => {
+    await expect(unlockCall("nobody", "call-a")).rejects.toBeInstanceOf(PaymentRequiredError);
   });
 
-  it("a premium credit allows exactly one new draft, and a refund gives it back once", async () => {
+  it("a credit unlocks exactly one call; the same call again spends nothing; another call needs another credit", async () => {
     await buyPremium("u1");
-    const r = await reserveDraftCredit("u1");
-    expect(r.usedCredit).toBe(true);
+    expect((await unlockCall("u1", "call-a")).unlockedCalls).toEqual(["call-a"]);
     expect(getEntitlement("u1")).toMatchObject({ premiumCredits: 0, premiumUsed: 1 });
-    await expect(reserveDraftCredit("u1")).rejects.toBeInstanceOf(PaymentRequiredError);
-    await r.refund();
-    await r.refund();
-    expect(getEntitlement("u1")).toMatchObject({ premiumCredits: 1, premiumUsed: 0 });
+    await expect(unlockCall("u1", "call-a")).resolves.toMatchObject({ premiumCredits: 0 });
+    await expect(unlockCall("u1", "call-b")).rejects.toBeInstanceOf(PaymentRequiredError);
+    expect(getEntitlement("u1").premiumUsed).toBe(1);
   });
 
-  it("two concurrent reservations never share one credit", async () => {
+  it("two concurrent unlocks never share one credit", async () => {
     await buyPremium("u-race");
-    const out = await Promise.allSettled([reserveDraftCredit("u-race"), reserveDraftCredit("u-race"), reserveDraftCredit("u-race")]);
+    const out = await Promise.allSettled([unlockCall("u-race", "a"), unlockCall("u-race", "b"), unlockCall("u-race", "c")]);
     expect(out.filter((o) => o.status === "fulfilled")).toHaveLength(1);
     expect(out.filter((o) => o.status === "rejected" && o.reason instanceof PaymentRequiredError)).toHaveLength(2);
     expect(getEntitlement("u-race").premiumCredits).toBe(0);
   });
 
-  it("Pro allows unlimited drafts and never spends credits", async () => {
+  it("Pro unlocks every call and never spends credits", async () => {
     await syncEntitlement({ appUserId: "u2", purchasedProductId: "mecena_pro_monthly" });
     await buyPremium("u2");
-    for (let i = 0; i < 3; i++) expect((await reserveDraftCredit("u2")).usedCredit).toBe(false);
+    for (const c of ["a", "b", "c"]) await unlockCall("u2", c);
     expect(getEntitlement("u2").premiumCredits).toBe(1);
   });
 
-  it("an expired Pro is not Pro (and does not draft)", async () => {
+  it("an expired Pro is not Pro (and unlocks nothing without a credit)", async () => {
     await saveEntitlement({ appUserId: "u-exp", pro: true, premiumCredits: 0, expiresAt: new Date(Date.now() - 60_000).toISOString(), source: "mock", updatedAt: nowIso() });
     expect((await resolveEntitlement("u-exp")).pro).toBe(false);
-    await expect(reserveDraftCredit("u-exp")).rejects.toBeInstanceOf(PaymentRequiredError);
+    await expect(unlockCall("u-exp", "a")).rejects.toBeInstanceOf(PaymentRequiredError);
     await saveEntitlement({ appUserId: "u-live", pro: true, premiumCredits: 0, expiresAt: new Date(Date.now() + 864e5).toISOString(), source: "mock", updatedAt: nowIso() });
     expect((await resolveEntitlement("u-live")).pro).toBe(true);
   });
 });
 
-describe("draftApplication with one premium credit", () => {
-  it("a double tap drafts once and spends one credit", async () => {
+describe("draftApplication", () => {
+  const CALL = "fixture-beca-artes-plasticas";
+  const ctx = { appUserId: DEMO_APP_USER_ID };
+  /** Spend the month's free matches on other calls, so CALL is beyond the free plan. */
+  const fillFreeQuota = () => unlockCalls({ appUserId: DEMO_APP_USER_ID, profileId: DEMO_CREATOR_ID }, ["other-1", "other-2", "other-3"]);
+
+  it("the free plan drafts the rule-based version of a call it shows, marked free, without any AI or credit", async () => {
     await seedOnboardedCreator();
-    await buyPremium(DEMO_APP_USER_ID);
     const spy = vi.spyOn(draftingAi.mock, "draftApplication");
-    const input = { callId: "fixture-beca-artes-plasticas", profileId: DEMO_CREATOR_ID };
-    const [a, b] = await Promise.all([draftApplication(input, { appUserId: DEMO_APP_USER_ID }), draftApplication(input, { appUserId: DEMO_APP_USER_ID })]);
+    const app = await draftApplication({ callId: CALL, profileId: DEMO_CREATOR_ID }, ctx);
+    expect(app.plan).toBe("free");
+    expect(app.sections.length).toBeGreaterThan(0);
+    expect(spy).not.toHaveBeenCalled(); // the rule-based draft, never the model slice
+  });
+
+  it("a double tap drafts once", async () => {
+    await seedOnboardedCreator();
+    const input = { callId: CALL, profileId: DEMO_CREATOR_ID };
+    const [a, b] = await Promise.all([draftApplication(input, ctx), draftApplication(input, ctx)]);
     expect(a.id).toBe(b.id);
+    expect(readDb().applications.filter((x) => x.profileId === DEMO_CREATOR_ID && x.callId === CALL)).toHaveLength(1);
+  });
+
+  it("a call beyond the month's free matches: 402 until it is unlocked with a credit, then the paid draft", async () => {
+    await seedOnboardedCreator();
+    await fillFreeQuota();
+    await expect(draftApplication({ callId: CALL, profileId: DEMO_CREATOR_ID }, ctx)).rejects.toBeInstanceOf(PaymentRequiredError);
+    await buyPremium(DEMO_APP_USER_ID);
+    await unlockCall(DEMO_APP_USER_ID, CALL);
+    const spy = vi.spyOn(draftingAi.mock, "draftApplication");
+    const app = await draftApplication({ callId: CALL, profileId: DEMO_CREATOR_ID }, ctx);
+    expect(app.plan).toBeUndefined();
     expect(spy).toHaveBeenCalledTimes(1);
-    expect(readDb().applications.filter((x) => x.profileId === DEMO_CREATOR_ID && x.callId === input.callId)).toHaveLength(1);
-    expect(getEntitlement(DEMO_APP_USER_ID).premiumCredits).toBe(0);
   });
 
-  it("two different calls at once with one credit: one draft, one 402", async () => {
+  it("Pro drafts any call with the model", async () => {
     await seedOnboardedCreator();
-    await buyPremium(DEMO_APP_USER_ID);
-    const ctx = { appUserId: DEMO_APP_USER_ID };
-    const out = await Promise.allSettled([
-      draftApplication({ callId: "fixture-beca-artes-plasticas", profileId: DEMO_CREATOR_ID }, ctx),
-      draftApplication({ callId: "fixture-premio-ilustracion", profileId: DEMO_CREATOR_ID }, ctx),
-    ]);
-    expect(out.filter((o) => o.status === "fulfilled")).toHaveLength(1);
-    expect(out.filter((o) => o.status === "rejected" && o.reason instanceof PaymentRequiredError)).toHaveLength(1);
-  });
-
-  it("the credit is reserved before the AI and given back when the AI fails", async () => {
-    await seedOnboardedCreator();
-    await buyPremium(DEMO_APP_USER_ID);
-    vi.spyOn(draftingAi.mock, "draftApplication").mockImplementation(async () => {
-      expect(getEntitlement(DEMO_APP_USER_ID).premiumCredits).toBe(0); // already reserved while the AI runs
-      throw new Error("AI down");
-    });
-    await expect(draftApplication({ callId: "fixture-beca-artes-plasticas", profileId: DEMO_CREATOR_ID }, { appUserId: DEMO_APP_USER_ID })).rejects.toThrow("AI down");
-    expect(getEntitlement(DEMO_APP_USER_ID)).toMatchObject({ premiumCredits: 1, premiumUsed: 0 });
+    await fillFreeQuota();
+    await grantPro();
+    const app = await draftApplication({ callId: CALL, profileId: DEMO_CREATOR_ID }, ctx);
+    expect(app.plan).toBeUndefined();
   });
 });
 
 describe("simulated jury entitlement", () => {
-  it(`without Pro an application includes ${JURY_RUNS_PER_APPLICATION} runs, then 402; another application has its own`, async () => {
-    for (let i = 0; i < JURY_RUNS_PER_APPLICATION; i++) await withJuryRun("j1", "app-1", async () => "ok");
-    await expect(withJuryRun("j1", "app-1", async () => "ok")).rejects.toBeInstanceOf(PaymentRequiredError);
-    await expect(withJuryRun("j1", "app-2", async () => "ok")).resolves.toBe("ok");
+  let n = 0;
+  async function application(plan?: "free", callId = "fixture-beca-artes-plasticas") {
+    const now = nowIso();
+    return saveApplication({ id: `app-${++n}`, profileId: DEMO_CREATOR_ID, callId, version: 1, status: "draft", sections: [], budget: [], checklist: [], ...(plan ? { plan } : {}), createdAt: now, updatedAt: now });
+  }
+  const ok = async () => "ok";
+
+  it(`a paid application (or one from before free drafts) includes ${JURY_RUNS_PER_APPLICATION} runs, then 402; another has its own`, async () => {
+    const [a, b] = [await application(), await application()];
+    for (let i = 0; i < JURY_RUNS_PER_APPLICATION; i++) await withJuryRun("j1", a.id, ok);
+    await expect(withJuryRun("j1", a.id, ok)).rejects.toBeInstanceOf(PaymentRequiredError);
+    await expect(withJuryRun("j1", b.id, ok)).resolves.toBe("ok");
+  });
+
+  it(`a free application: no run on Mecena's AI, ${FREE_JURY_RUNS_PER_APPLICATION} with the user's own assistant; a Solicitud premium for the call gives ${JURY_RUNS_PER_APPLICATION}`, async () => {
+    const a = await application("free");
+    await expect(withJuryRun("j4", a.id, ok, { costsAi: true })).rejects.toThrow(/MCP/);
+    for (let i = 0; i < FREE_JURY_RUNS_PER_APPLICATION; i++) await withJuryRun("j4", a.id, ok, { costsAi: false });
+    await expect(withJuryRun("j4", a.id, ok, { costsAi: false })).rejects.toBeInstanceOf(PaymentRequiredError);
+    await buyPremium("j4");
+    await unlockCall("j4", a.callId);
+    await expect(withJuryRun("j4", a.id, ok, { costsAi: true })).resolves.toBe("ok");
   });
 
   it("a failed run is not counted", async () => {
-    await expect(withJuryRun("j2", "app-1", async () => Promise.reject(new Error("AI down")))).rejects.toThrow("AI down");
-    expect(getEntitlement("j2").juryRuns?.["app-1"]).toBe(0);
+    const a = await application();
+    await expect(withJuryRun("j2", a.id, async () => Promise.reject(new Error("AI down")))).rejects.toThrow("AI down");
+    expect(getEntitlement("j2").juryRuns?.[a.id]).toBe(0);
   });
 
   it("Pro is unlimited", async () => {
     await grantPro("j3");
-    for (let i = 0; i < JURY_RUNS_PER_APPLICATION + 2; i++) await withJuryRun("j3", "app-1", async () => "ok");
+    const a = await application("free");
+    for (let i = 0; i < JURY_RUNS_PER_APPLICATION + 2; i++) await withJuryRun("j3", a.id, ok);
     expect(getEntitlement("j3").juryRuns).toBeUndefined();
+  });
+});
+
+describe("a call unlocked with a Solicitud premium", () => {
+  const CALL = "fixture-beca-artes-plasticas";
+  const OTHER = "fixture-premio-ilustracion";
+
+  it("POST /api/entitlements/unlock: 404 for an unknown call and 402 without a credit, both spending nothing", async () => {
+    expect((await postUnlock(req("/api/entitlements/unlock", { body: { callId: "no-existe" } }))).status).toBe(404);
+    const denied = await postUnlock(req("/api/entitlements/unlock", { body: { callId: CALL } }));
+    expect(denied.status).toBe(402);
+    expect((await denied.json()).message).toMatch(/Mecena Pro o una Solicitud premium/);
+  });
+
+  it("gives that call (only) what Pro gives: in full beyond the free matches and its adapted dossier", async () => {
+    await seedOnboardedCreator();
+    await unlockCalls({ appUserId: DEMO_APP_USER_ID, profileId: DEMO_CREATOR_ID }, ["other-1", "other-2", "other-3"]);
+    await buyPremium(DEMO_APP_USER_ID);
+    const res = await postUnlock(req("/api/entitlements/unlock", { body: { callId: CALL } }));
+    expect(res.status).toBe(200);
+    expect((await res.json()).entitlement).toMatchObject({ premiumCredits: 0, unlockedCalls: [CALL] });
+
+    expect(await canSeeCall({ appUserId: DEMO_APP_USER_ID, profileId: DEMO_CREATOR_ID, callId: CALL })).toBe(true);
+    expect(await canSeeCall({ appUserId: DEMO_APP_USER_ID, profileId: DEMO_CREATOR_ID, callId: OTHER })).toBe(false);
+    const dossier = async (callId: string) => (await getDossier(req(`/api/dossier?profileId=${DEMO_CREATOR_ID}&callId=${callId}`))).json();
+    expect((await dossier(CALL)).adapted).toBe(true);
+    expect((await dossier(OTHER)).adapted).toBe(false);
   });
 });
 

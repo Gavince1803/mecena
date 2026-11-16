@@ -43,7 +43,7 @@ export const handlers: ToolHandlers = {
     getCall(input.callId); // unknown call: "not found" before anything else
     // The call variant is Pro (same rule as /api/dossier): without it, the general dossier plus the call's notes as a
     // preview, built without any model call. That is exactly what the returned link shows to a free user.
-    const adapted = await canAdaptDossier(ctx);
+    const adapted = await canAdaptDossier(ctx, input.callId);
     if (adapted) limitAi({ id: ctx.userId }, "dossier-variant"); // same per-user AI limits as the app's routes
     const dossier = adapted ? await buildDossier({ profileId, callId: input.callId }) : (await loadDossierData({ profileId, callId: input.callId, adapt: false })).dossier;
     return { dossier, url: dossierUrl(profileId, input.callId), adapted };
@@ -51,7 +51,7 @@ export const handlers: ToolHandlers = {
   export_dossier_pdf: async (input, ctx) => {
     const profileId = profileFor(input, ctx);
     if (input.callId) getCall(input.callId);
-    const adapted = Boolean(input.callId) && (await canAdaptDossier(ctx));
+    const adapted = !!input.callId && (await canAdaptDossier(ctx, input.callId));
     if (adapted) limitAi({ id: ctx.userId }, "dossier-variant");
     // The URL is the authenticated download route (same Pro rule); the server-side file path never leaves the server.
     const { url, pages, sizeMb, note } = await exportDossierPdf({ profileId, callId: adapted ? input.callId : undefined });

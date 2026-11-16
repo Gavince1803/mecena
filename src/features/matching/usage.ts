@@ -4,7 +4,7 @@
  * detail, ?q= searches and the tools (search_calls / explain_call through applyFreeMatchLimit). Pro sees everything.
  * appUserId always comes from the session (route) or the ToolContext, never from the client.
  */
-import { FREE_MATCHES_PER_MONTH, type Call, type MatchResult } from "@/contracts";
+import { FREE_MATCHES_PER_MONTH, hasCallAccess, type Call, type MatchResult } from "@/contracts";
 import { resolveEntitlement } from "@/features/purchases/server";
 import { readDb, updateDb } from "@/server/store";
 
@@ -59,10 +59,13 @@ export async function visibleCalls(who: Who & { profileComplete: boolean }, cand
   return new Set([...current, ...extra]);
 }
 
-/** Can this user see the full match for this call? Unlocks it when the month's quota allows. Pro: always. */
+/**
+ * Can this user see the full match for this call? Pro and a call unlocked with a Solicitud premium: always. Otherwise
+ * it uses one of the month's free matches when the quota allows. `pro: false` skips the Pro check (caller knows).
+ */
 export async function canSeeCall(who: Who & { callId: string; pro?: boolean }): Promise<boolean> {
-  const pro = who.pro ?? (await resolveEntitlement(who.appUserId)).pro;
-  if (pro) return true;
+  const e = await resolveEntitlement(who.appUserId);
+  if ((who.pro ?? e.pro) || hasCallAccess({ pro: false, unlockedCalls: e.unlockedCalls }, who.callId)) return true;
   return (await unlockCalls(who, [who.callId])).has(who.callId);
 }
 
@@ -85,9 +88,11 @@ export async function applyFreeMatchLimit<T extends { call: Call; match: MatchRe
   items: readonly T[],
   who: Who & { pro?: boolean; profileComplete?: boolean; previewCandidates?: readonly string[] },
 ): Promise<MaybeLocked<T>[]> {
-  const pro = who.pro ?? (await resolveEntitlement(who.appUserId)).pro;
+  const e = await resolveEntitlement(who.appUserId);
+  const pro = who.pro ?? e.pro;
   if (pro) return [...items];
-  const own = items.filter((r) => r.call.status !== "recurring").map((r) => r.call.id);
+  const premium = new Set(e.unlockedCalls ?? []); // calls unlocked with a Solicitud premium: in full, outside the quota
+  const own = items.filter((r) => r.call.status !== "recurring" && !premium.has(r.call.id)).map((r) => r.call.id);
   const unlocked = await visibleCalls({ ...who, profileComplete: who.profileComplete ?? true }, who.previewCandidates ?? own);
-  return items.map((r) => (unlocked.has(r.call.id) ? r : { ...r, match: lockedMatch(r.match), locked: true, paywall: "match_limit" as const }));
+  return items.map((r) => (unlocked.has(r.call.id) || premium.has(r.call.id) ? r : { ...r, match: lockedMatch(r.match), locked: true, paywall: "match_limit" as const }));
 }

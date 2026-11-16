@@ -332,6 +332,9 @@ export const Application = z.object({
   revision: ApplicationRevision.optional(),
   // F: the draft as it was before the last "Aplicar mejoras", so the user can undo it (they have the last word).
   previous: ApplicationSnapshot.optional(),
+  // "free": drafted on the free plan (the rule-based draft, no AI spent). Absent: drafted with Pro or a Solicitud premium
+  // (or before free drafts existed, when every draft was paid).
+  plan: z.literal("free").optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -420,8 +423,10 @@ export const EntitlementState = z.object({
   grantedCredits: z.number().int().min(0).optional(),
   activeProductId: z.string().optional(), // "demo" = granted by the server-side demo scenario (never re-verified)
   expiresAt: z.string().optional(), // Pro ends here (re-synced lazily with RevenueCat when it passes)
-  // Simulated-jury runs per application without Pro (each application includes JURY_RUNS_PER_APPLICATION).
+  // Simulated-jury runs per application without Pro (see juryRunLimit in src/features/purchases/server.ts).
   juryRuns: z.record(z.string(), z.number().int().min(0)).optional(),
+  // Calls unlocked with a Solicitud premium credit (one credit each): everything Pro gives, for that call only.
+  unlockedCalls: z.array(z.string()).optional(),
   verifiedAt: z.string().optional(), // last successful RevenueCat REST verification
   source: z.enum(["revenuecat", "mock"]),
   updatedAt: z.string(),

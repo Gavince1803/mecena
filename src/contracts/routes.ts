@@ -97,6 +97,7 @@ export const API = {
   justificationInvoiceImage: (id: string) => `/api/justification/invoices/${encodeURIComponent(id)}/image`,
   justificationMemoria: "/api/justification/memoria", // POST { applicationId, notes? } draft it; PATCH { applicationId, sections } save the user's edits
   entitlements: "/api/entitlements", // GET the user's entitlement, POST sync after a purchase
+  entitlementsUnlock: "/api/entitlements/unlock", // POST { callId }: spend a Solicitud premium credit on this call
   agent: "/api/agent", // POST { message, history }
   demoReset: "/api/demo/reset", // POST { scenario }: resets the signed-in user's own data only (and loads a scenario)
   demoSettings: "/api/demo/settings", // GET status + scenario checks; POST { deterministicJury?, aiMock? } (own account)

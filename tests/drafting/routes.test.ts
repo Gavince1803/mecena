@@ -4,7 +4,7 @@ import { GET as getApp, PATCH as patchApp } from "@/app/api/applications/[id]/ro
 import { GET as getJury, POST as postJury } from "@/app/api/jury/route";
 import { POST as postImprove } from "@/app/api/jury/improve/route";
 import { DEMO_APP_USER_ID, DEMO_CREATOR_ID } from "@/fixtures";
-import { ctx, grantPro, req, seedOnboardedCreator, loginDemo } from "../helpers";
+import { ctx, grantPro, req, seedOnboardedCreator, loginDemo, fillFreeQuota } from "../helpers";
 
 const CALL = "fixture-beca-artes-plasticas";
 
@@ -16,6 +16,7 @@ beforeEach(async () => {
 describe("demo beats 6-7 through the API", () => {
   it("402 → Pro → draft (with sources) → reload without re-drafting → jury 61 → improve 84", async () => {
     await seedOnboardedCreator();
+    await fillFreeQuota(); // the call is beyond the free plan
     const body = { callId: CALL, profileId: DEMO_CREATOR_ID, appUserId: DEMO_APP_USER_ID };
 
     expect((await (await getApps(req(`/api/applications?callId=${CALL}&profileId=${DEMO_CREATOR_ID}`))).json()).application).toBeNull();

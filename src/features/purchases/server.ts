@@ -4,16 +4,18 @@
 // - No secret: only the explicit mock build outside production (NEXT_PUBLIC_PURCHASES_MOCK=1, dev and tests) grants a
 //   simulated purchase, from the product id. Anywhere else purchase claims are refused and logged.
 import {
-  canDraft,
+  FREE_JURY_RUNS_PER_APPLICATION,
+  hasCallAccess,
   JURY_RUNS_PER_APPLICATION,
   PaymentRequiredError,
   PRODUCTS,
   publicEnv,
   serverEnv,
+  type Application,
   type Db,
   type EntitlementState,
 } from "@/contracts";
-import { nowIso, readDb, updateDb } from "@/server/store";
+import { getApplication, nowIso, readDb, updateDb } from "@/server/store";
 
 export const REVENUECAT_API = "https://api.revenuecat.com/v1";
 
@@ -119,73 +121,84 @@ export async function resolveEntitlement(appUserId: string, opts: { refresh?: bo
   return view(stored ?? blank(appUserId));
 }
 
-/** Throws PaymentRequiredError unless the user is Pro or has a Solicitud premium credit (read only). */
-export async function requireDraftEntitlement(appUserId: string): Promise<EntitlementState> {
+/** Shown when a call needs Pro or a Solicitud premium and the user has neither for it. */
+export const CALL_LOCKED_MESSAGE = "Para esta convocatoria necesitas Mecena Pro o una Solicitud premium";
+
+/**
+ * Spend one Solicitud premium credit on this call: from now on the user has everything Pro gives for it (the call in
+ * full, its adapted dossier, its jury runs). Pro, or a call already unlocked: nothing is spent. Without a credit:
+ * PaymentRequiredError. The credit is taken atomically (inside the serialised updateDb), so two concurrent unlocks never
+ * share one. When nothing is stored as paid and the secret key is set, RevenueCat is asked once first, so a purchase
+ * whose sync failed still unlocks.
+ */
+export async function unlockCall(appUserId: string, callId: string): Promise<EntitlementState> {
   const e = await resolveEntitlement(appUserId);
-  if (!canDraft(e)) throw new PaymentRequiredError();
-  return e;
+  if (hasCallAccess(view(e), callId)) return view(e);
+  if (e.premiumCredits <= 0 && verificationMode() === "revenuecat" && !paused(appUserId)) await syncFromRevenueCat(appUserId).catch(() => undefined);
+  return view(
+    await updateDb((db) => {
+      const cur = findIn(db, appUserId);
+      const now = cur && view(cur);
+      if (now && hasCallAccess(now, callId)) return cur!;
+      if (!cur || !now || now.premiumCredits <= 0) throw new PaymentRequiredError(CALL_LOCKED_MESSAGE); // never spends an unverified credit
+      return upsert(db, {
+        ...cur,
+        premiumCredits: cur.premiumCredits - 1,
+        premiumUsed: (cur.premiumUsed ?? 0) + 1,
+        unlockedCalls: [...new Set([...(cur.unlockedCalls ?? []), callId])],
+        updatedAt: nowIso(),
+      });
+    }),
+  );
 }
 
-export interface DraftReservation {
-  /** True when a premium credit was taken (false for Pro). */
-  usedCredit: boolean;
-  /** Give the credit back (the draft failed). Safe to call more than once. */
-  refund(): Promise<void>;
+/** Pro, or this call unlocked with a Solicitud premium (read only; never spends a credit). */
+export async function canUseCall(appUserId: string, callId: string): Promise<boolean> {
+  return hasCallAccess(await resolveEntitlement(appUserId), callId);
 }
 
 /**
- * Reserve the right to draft BEFORE calling the AI: Pro passes; otherwise one premium credit is taken atomically
- * (inside the serialised updateDb), so two concurrent drafts can never share one credit. Refund it if drafting fails.
- * When nothing is stored as paid and the secret key is set, RevenueCat is asked once first, so a purchase whose sync
- * failed still unlocks the draft.
+ * Simulated-jury runs an application includes without Pro (Infinity with Pro): JURY_RUNS_PER_APPLICATION for a call
+ * unlocked with a Solicitud premium (or an application drafted before free drafts existed, which was paid); on the free
+ * plan, FREE_JURY_RUNS_PER_APPLICATION when the run costs Mecena no AI (the user's assistant over MCP), none otherwise.
  */
-export async function reserveDraftCredit(appUserId: string): Promise<DraftReservation> {
-  const e = await resolveEntitlement(appUserId);
-  if (!canDraft(e) && verificationMode() === "revenuecat" && !paused(appUserId)) await syncFromRevenueCat(appUserId).catch(() => undefined);
-  const usedCredit = await updateDb((db) => {
-    const cur = findIn(db, appUserId);
-    const now = cur && view(cur);
-    if (now?.pro) return false;
-    if (!cur || !now || now.premiumCredits <= 0) throw new PaymentRequiredError(); // never spends an unverified credit
-    upsert(db, { ...cur, premiumCredits: cur.premiumCredits - 1, premiumUsed: (cur.premiumUsed ?? 0) + 1, updatedAt: nowIso() });
-    return true;
-  });
-  let refunded = false;
-  return {
-    usedCredit,
-    async refund() {
-      if (!usedCredit || refunded) return;
-      refunded = true;
-      await updateDb((db) => {
-        const cur = findIn(db, appUserId);
-        if (cur) upsert(db, { ...cur, premiumCredits: cur.premiumCredits + 1, premiumUsed: Math.max(0, (cur.premiumUsed ?? 0) - 1), updatedAt: nowIso() });
-      });
-    },
-  };
+export function juryRunLimit(e: EntitlementState, application: Pick<Application, "callId" | "plan">, opts: { costsAi: boolean }): number {
+  if (view(e).pro) return Infinity;
+  if (hasCallAccess(view(e), application.callId) || application.plan !== "free") return JURY_RUNS_PER_APPLICATION;
+  return opts.costsAi ? 0 : FREE_JURY_RUNS_PER_APPLICATION;
+}
+
+/** Jury runs left for this application without Pro (Infinity with Pro). */
+export function juryRunsLeft(e: EntitlementState, application: Pick<Application, "id" | "callId" | "plan">, opts: { costsAi: boolean }): number {
+  const limit = juryRunLimit(e, application, opts);
+  return limit === Infinity ? Infinity : Math.max(0, limit - (e.juryRuns?.[application.id] ?? 0));
+}
+
+/** The paywall once an application has no jury runs left. */
+export function juryRunsMessage(limit: number): string {
+  if (limit === 0) return `El tribunal simulado en la app es de Mecena Pro o de una Solicitud premium para esta convocatoria (${JURY_RUNS_PER_APPLICATION} pasadas). Con tu propio asistente conectado por MCP tienes ${FREE_JURY_RUNS_PER_APPLICATION} gratis.`;
+  if (limit === FREE_JURY_RUNS_PER_APPLICATION && limit < JURY_RUNS_PER_APPLICATION)
+    return `Ya has usado la pasada por el tribunal del plan gratuito para esta solicitud. Con una Solicitud premium para esta convocatoria tienes ${JURY_RUNS_PER_APPLICATION}; con Mecena Pro, sin límite.`;
+  return JURY_RUNS_USED_MESSAGE;
 }
 
 /** The paywall once an application's included jury runs are used up. */
 export const JURY_RUNS_USED_MESSAGE = `Tu solicitud premium incluye ${JURY_RUNS_PER_APPLICATION} pasadas por el tribunal y ya las has usado. Con Mecena Pro, sin límite.`;
 
-/** Jury runs left for this application without Pro (Infinity with Pro). */
-export function juryRunsLeft(e: EntitlementState, applicationId: string): number {
-  if (view(e).pro) return Infinity;
-  return Math.max(0, JURY_RUNS_PER_APPLICATION - (e.juryRuns?.[applicationId] ?? 0));
-}
-
 /**
- * The simulated jury (and "Aplicar mejoras") is Pro; without Pro, each application (which was unlocked with a
- * Solicitud premium credit to exist at all) includes JURY_RUNS_PER_APPLICATION runs. The run is counted atomically
- * before `fn` (the AI) and given back if it throws. The caller must already have checked the application is the user's.
+ * One simulated-jury run without Pro, counted atomically before `fn` and given back if it throws (see juryRunLimit).
+ * `costsAi`: the run is scored by Mecena's model (the app with AI on the server), not by the user's own assistant.
+ * The caller must already have checked the application is the user's.
  */
-export async function withJuryRun<T>(appUserId: string, applicationId: string, fn: () => Promise<T>): Promise<T> {
+export async function withJuryRun<T>(appUserId: string, applicationId: string, fn: () => Promise<T>, opts: { costsAi: boolean } = { costsAi: true }): Promise<T> {
   await resolveEntitlement(appUserId); // lazy expiry / re-sync
+  const application = getApplication(applicationId);
   const counted = await updateDb((db) => {
     const cur = findIn(db, appUserId) ?? blank(appUserId);
     if (view(cur).pro) return false;
+    const limit = juryRunLimit(cur, application, opts);
     const runs = cur.juryRuns?.[applicationId] ?? 0;
-    if (runs >= JURY_RUNS_PER_APPLICATION)
-      throw new PaymentRequiredError(JURY_RUNS_USED_MESSAGE);
+    if (runs >= limit) throw new PaymentRequiredError(juryRunsMessage(limit));
     // updatedAt is left alone: legacy credit accounting (legacyUsed) depends on it
     upsert(db, { ...cur, juryRuns: { ...cur.juryRuns, [applicationId]: runs + 1 } });
     return true;
@@ -251,6 +264,7 @@ export function entitlementFromSubscriber(appUserId: string, sub: Subscriber, pr
     // kept after it lapses too, so reads keep asking for a renewal for a while (needsResync)
     ...(!demo && pro?.expires_date ? { expiresAt: pro.expires_date } : {}),
     ...(previous?.juryRuns ? { juryRuns: previous.juryRuns } : {}),
+    ...(previous?.unlockedCalls ? { unlockedCalls: previous.unlockedCalls } : {}),
     verifiedAt: now.toISOString(),
     source: "revenuecat",
     updatedAt: now.toISOString(),
