@@ -20,7 +20,7 @@ import {
   type ToolName,
   type ToolOutput,
 } from "@/contracts";
-import { AiBudgetError, AiError } from "@/server/ai/llm";
+import { AiBudgetError, AiError, AiUnavailableError } from "@/server/ai/llm";
 import { listCalls } from "@/server/store";
 
 const base = () => serverEnv().publicUrl;
@@ -188,7 +188,7 @@ export function toolErrorMessage(e: unknown, caller?: ToolContext["caller"]): st
   if (e instanceof ZodError) return `Datos de entrada no válidos: ${e.issues.map((i) => `${i.path.join(".") || "(entrada)"}: ${i.message}`).join("; ")}`;
   if (e instanceof NotFoundError) return sentence(e.message.charAt(0).toUpperCase() + e.message.slice(1));
   if (e instanceof UnauthorizedError || e instanceof ForbiddenError || e instanceof ConflictError || e instanceof TooManyRequestsError || e instanceof BadRequestError) return e.message;
-  if (e instanceof AiBudgetError) return e.message;
+  if (e instanceof AiBudgetError || e instanceof AiUnavailableError) return e.message;
   if (e instanceof AiError) return "La IA no ha podido completar esta tarea ahora mismo. Inténtalo de nuevo en unos segundos.";
   return "Algo ha fallado al ejecutar esta herramienta. Inténtalo de nuevo en unos segundos.";
 }

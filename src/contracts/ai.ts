@@ -243,4 +243,9 @@ export interface AiService {
 export type AiSlice<K extends keyof Omit<AiService, "mode">> = {
   real: Pick<AiService, K>;
   mock: Pick<AiService, K>;
+  /**
+   * Overrides of `mock` when the server has no AI for real users (serverEnv().noAi): where the mock was built for tests
+   * or the demo and would show made-up data to a real person, the honest version (nothing read, or "not available").
+   */
+  offline?: Partial<Pick<AiService, K>>;
 };

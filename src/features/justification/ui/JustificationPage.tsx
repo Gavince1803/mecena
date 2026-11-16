@@ -17,7 +17,7 @@ import s from "./justification.module.css";
 /** Spanish text for a failed request (server 4xx messages are already Spanish; AI and 5xx details never shown). */
 function errorText(e: unknown, fallback: string): string {
   if (e instanceof ApiClientError) {
-    if ([400, 404, 409, 429].includes(e.status)) return e.message;
+    if ([400, 404, 409, 429, 503].includes(e.status)) return e.message;
     if (e.code === "network") return "Sin conexión. Comprueba la red e inténtalo de nuevo.";
   }
   return fallback;
@@ -137,8 +137,11 @@ export function JustificationPage({ applicationId }: { applicationId: string }) 
     <>
       <PageTitle kicker="Justificación">{call.title}</PageTitle>
       <p className={s.lead}>
-        Haz una foto a cada factura: la leemos, la asignamos a una partida de tu presupuesto y te avisamos si algo se desvía. Al final preparamos la memoria con tus datos.
+        {state.mode === "off"
+          ? "Haz una foto a cada factura y escribe sus datos: la asignamos a una partida de tu presupuesto y te avisamos si algo se desvía. Al final preparamos la memoria con tus datos."
+          : "Haz una foto a cada factura: la leemos, la asignamos a una partida de tu presupuesto y te avisamos si algo se desvía. Al final preparamos la memoria con tus datos."}
       </p>
+      {state.mode === "off" && <p className={s.note}>Mecena no lee las fotos: guardamos la foto y tú escribes el emisor, el concepto y el importe.</p>}
       {state.mode === "mock" && (
         <p className={s.note}>Modo de pruebas: sin la IA no podemos leer la foto. Escribe debajo qué es (emisor, concepto e importe) y revisa los datos a mano.</p>
       )}

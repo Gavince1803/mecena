@@ -466,3 +466,56 @@
     flex: 1 1 100%;
   }
 }
+
+/* "Mejóralo con tu asistente" and "Completa los huecos": no AI on Mecena's side */
+.assistantRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.paste {
+  min-height: 140px;
+}
+
+.gapRow {
+  display: grid;
+  gap: 6px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.gapRow:last-child {
+  border-bottom: 0;
+}
+
+.gapRow label {
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.gapInput {
+  display: flex;
+  gap: 8px;
+}
+
+.gapInput input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-input);
+  background: var(--surface);
+  color: var(--text-1);
+}
+
+.gapInput input:focus {
+  outline: none;
+  border-color: var(--gray-950);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 22%, transparent);
+}

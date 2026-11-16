@@ -143,6 +143,8 @@ function failedDescribe({ voiceDescription }: DescribeWorkInput): DescribeWorkRe
 
 export const worksAi: AiSlice<"describeWork"> = {
   mock: { describeWork: mockDescribe },
+  // No AI on the server: nobody reads the photo (the mock's crop is made up), the sheet is the artist's words only.
+  offline: { describeWork: async (input) => failedDescribe(input) },
   real: {
     async describeWork(input) {
       try {

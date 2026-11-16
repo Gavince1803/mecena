@@ -62,13 +62,14 @@ with Context describing the limits of ADR-003, and ADR-003's status changed to "
 | [017](#adr-017-every-push-to-main-deploys) | Every push to `main` deploys | Accepted |
 | [018](#adr-018-a-single-shared-profile-behind-optional-basic-auth) | A single shared profile behind optional Basic auth | Superseded by ADR-019 |
 | [019](#adr-019-per-user-accounts-the-server-ignores-client-supplied-ids) | Per-user accounts; the server ignores client-supplied ids | Accepted |
-| [020](#adr-020-ai-runs-on-the-owners-server-side-key-with-per-user-and-daily-caps) | AI runs on the owner's server-side key, with per-user and daily caps | Accepted |
+| [020](#adr-020-ai-runs-on-the-owners-server-side-key-with-per-user-and-daily-caps) | AI runs on the owner's server-side key, with per-user and daily caps | Superseded by ADR-027 |
 | [021](#adr-021-invite-codes-for-sign-up-open-sign-up-as-an-option) | Invite codes for sign-up, open sign-up as an option | Accepted |
 | [022](#adr-022-a-plan-b-for-every-demo-beat) | A plan B for every demo beat | Accepted |
 | [023](#adr-023-from-dark-glassmorphism-to-a-light-design-system-with-skeletons-and-idempotent-writes) | From dark glassmorphism to a light design system with skeletons and idempotent writes | Accepted |
 | [024](#adr-024-kind-first-entry-creator-or-pyme-before-signing-in) | Kind-first entry: creator or pyme before signing in | Accepted |
 | [025](#adr-025-stretch-features-justification-and-b2b-panel-with-the-money-maths-in-code) | Stretch features: justification and B2B panel, with the money maths in code | Accepted |
 | [026](#adr-026-over-mcp-the-users-own-claude-does-the-ai-work) | Over MCP, the user's own Claude does the AI work | Accepted |
+| [027](#adr-027-the-app-runs-without-ai-on-the-server) | The app runs without AI on the server | Accepted |
 
 ---
 
@@ -584,7 +585,7 @@ RevenueCat app user id is one per user.
 
 ## ADR-020: AI runs on the owner's server-side key, with per-user and daily caps
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-027 (the caps still apply wherever a key is set)
 - **Date:** 2026-11-14
 
 **Context.** Artists should not need an Anthropic account or a Claude plan to use Mecena. The hackathon provided no AI
@@ -744,3 +745,42 @@ agent keeps `draft_application` and `score_application` (`AGENT_TOOL_NAMES`): it
 
 **Evidence.** `src/contracts/tools.ts`, `src/mcp/core.ts`, `src/features/drafting/service.ts`,
 `src/features/jury/service.ts`, `tests/mcp/tools.test.ts`, PR #82.
+
+---
+
+## ADR-027: The app runs without AI on the server
+
+- **Status:** Accepted
+- **Date:** 2026-11-16
+
+**Context.** Every AI call in the app was paid by the owner's key (ADR-020), and the owner wants to stop spending it.
+Over MCP the user's own Claude already does the work (ADR-026), but most artists use the web app. Removing the key was
+not enough on its own: without it the app falls back to mocks written for tests and the demo, and some of them show
+made-up data to a real person (a fixed invoice, a crop of a photo nobody looked at, a scripted 61 → 84 jury, invented
+deep-research candidates).
+
+**Decision.** A "no AI on the server" mode (`serverEnv().noAi`): on by default in production without
+`ANTHROPIC_API_KEY`, or forced with `MECENA_NO_AI=1`. Each AI slice can declare `offline` overrides of its mock
+(`AiSlice.offline`), applied by `getAi()` in that mode: the invoice and the work photo are typed by hand (nothing read),
+and the jury, "Aplicar mejoras" and deep research throw `AiUnavailableError` (503 with a Spanish message that points to
+the user's own assistant; deep research refuses before the paywall, the jury gives its run back). The honest
+deterministic versions stay: the interview's keyword extraction, the rule-based draft that quotes the user and marks
+"[Completa: …]" gaps, the dossier adaptation, the rule-based fit. An account with the demo switch "IA simulada" keeps the
+demo mocks. The draft page adds two ways to improve a draft with no AI on Mecena's side: «Completa los huecos» (each gap
+as a question, the answer replaces it word for word) and «Mejóralo con tu asistente» (a prompt with Mecena's rules,
+the bases, the user's words and the draft, to paste into any chat, free plans included, and a box to paste the answer
+back as "## Título" blocks, matched to the draft's sections and saved as an edit). The jury page offers the same prompt
+for the jury, and shows a score saved over MCP.
+
+**Consequences.**
+- With the key unset, the app costs nothing in AI. Removing it is an operator step (`fly secrets unset`).
+- The in-app experience is plainer: no photo reading, no in-app jury, a rule-based first draft. The quality of an
+  improved draft depends on the user's assistant; Mecena only matches the pasted sections and keeps the budget and the
+  checklist.
+- Mecena Pro still sells the call-adapted dossier, unlimited matches and, over MCP, unlimited saved jury runs; the
+  in-app jury and deep research are not available in this mode, so the pricing copy should be reviewed.
+- The live BDNS catalogue stays off without a key (its rule-only structuring is too poor to publish).
+
+**Evidence.** `src/contracts/env.ts`, `src/contracts/ai.ts`, `src/server/ai/index.ts`, `src/server/ai/llm.ts`,
+`src/features/drafting/assistant.ts`, `src/features/drafting/reply.ts`, `src/features/drafting/ui/AssistantCard.tsx`,
+`src/features/drafting/ui/GapsCard.tsx`, `tests/drafting/no-server-ai.test.ts`, PR #83.

@@ -191,7 +191,7 @@ flowchart TB
 How the pieces fit:
 
 - **Pages and API.** `src/app` holds the Spanish-slug pages and the route handlers under `src/app/api`. `src/proxy.ts` puts the optional Basic password in front of everything and sends signed-out visitors to `/entrar`; every handler validates the session itself (`src/server/auth`) and only touches the signed-in user's data. The contracts shared by client and server (zod schemas, routes, env names) live in `src/contracts`.
-- **AI.** Feature `ai.ts` files call Claude through `src/server/ai` (`@anthropic-ai/sdk`): a fast tier (`MECENA_MODEL_FAST`) for extraction and short answers, a smart tier (`MECENA_MODEL_SMART`) for drafting and the jury, and `MECENA_MODEL_ONBOARDING` for the live interview. Every call is charged against per-user limits (`src/server/ai-limits.ts`) and a global daily cap (`src/server/ai/budget.ts`). With no key, with `MECENA_AI_MOCK=1` or with an account's *IA simulada* switch on, the same interface answers with deterministic mocks.
+- **AI.** Without `ANTHROPIC_API_KEY` in production the server has no AI at all (ADR-027) and the MCP server never uses it (ADR-026); the rest of this paragraph is what happens when a key is set. Feature `ai.ts` files call Claude through `src/server/ai` (`@anthropic-ai/sdk`): a fast tier (`MECENA_MODEL_FAST`) for extraction and short answers, a smart tier (`MECENA_MODEL_SMART`) for drafting and the jury, and `MECENA_MODEL_ONBOARDING` for the live interview. Every call is charged against per-user limits (`src/server/ai-limits.ts`) and a global daily cap (`src/server/ai/budget.ts`). With no key, with `MECENA_AI_MOCK=1` or with an account's *IA simulada* switch on, the same interface answers with deterministic mocks.
 - **Data.** `src/server/store` keeps everything in `<MECENA_DATA_DIR>/db.json`, written atomically and serialised in process, with a `.bak` copy of the previous version. That is why production runs on exactly one machine. Uploads (work photos, invoices) and PDF exports sit next to it.
 - **Calls.** The curated calls in `data/calls` are read-only. `src/features/calls-ingest` searches BDNS in the background for each profile and refreshes a shared catalogue once a day (`src/instrumentation.ts`), structuring each record with Claude; `src/features/normalize` turns BDNS records into the call model the matcher (`src/features/matching`) scores.
 - **Purchases.** The browser buys through RevenueCat Web Billing; the server re-reads the customer from RevenueCat REST v1 with the secret key and ignores what the client claims (`src/features/purchases/server.ts`).
@@ -205,8 +205,9 @@ All settings are environment variables. [`.env.example`](.env.example) documents
 
 | Variable | Default | What it does |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | empty | Claude API key. Empty = every AI call runs on deterministic mocks. |
+| `ANTHROPIC_API_KEY` | empty | Claude API key. Empty = every AI call runs on deterministic mocks, and in production the app runs **without AI on the server** (see `MECENA_NO_AI`). |
 | `MECENA_AI_MOCK` | empty | `1` forces mocks even with a key (the tests always set it). |
+| `MECENA_NO_AI` | on in production without a key | `1`: no AI on the server for real users (ADR-027). The honest deterministic versions stay (interview, rule-based draft, dossier, fit); the mocks built for tests and the demo are switched off: invoices and work photos are typed by hand, and the jury and deep research point to the user's own assistant (copy the prompt into any chat, or connect it over MCP). |
 | `MECENA_MODEL_FAST` / `MECENA_MODEL_SMART` | `claude-sonnet-5-5` / `claude-opus-5-5` | Models of the fast and smart tiers. |
 | `MECENA_MODEL_ONBOARDING` | `claude-haiku-5-5` | Model for each live interview turn (latency-bound). |
 | `MECENA_MODEL_LAYOUT`, `MECENA_LAYOUT_COUNT`, `MECENA_FREE_LAYOUT_DEFAULT` | `claude-sonnet-5-5`, `2` (max 4), on | Free dossier layout: model, proposals per batch, and whether it is on by default (`0` = off). |
@@ -266,7 +267,7 @@ fly deploy --ha=false --remote-only   # --ha=false: db.json needs exactly one ma
 The token expires in a year (Nov 2027). To renew it: `fly tokens create deploy -a mecena -x 8760h | gh secret set FLY_API_TOKEN`.
 
 - Secrets (runtime, `fly secrets list -a mecena`):
-  - `ANTHROPIC_API_KEY`: without it the app silently falls back to AI mocks.
+  - `ANTHROPIC_API_KEY`: optional. Without it the app runs with no AI on the server (ADR-027): it spends nothing on Anthropic, drafting starts from the rule-based version and users improve it, or run the jury, with their own assistant (copy and paste into any chat, or MCP). To stop spending on the key: `fly secrets unset ANTHROPIC_API_KEY -a mecena`, and revoke the key in the Anthropic console.
   - `REVENUECAT_SECRET_API_KEY`: the RevenueCat **secret** key (`sk_…`) of the same sandbox project as the public `rcb_sb_…` key. With it, the server re-reads the customer from RevenueCat REST and ignores what the client claims; without it, production refuses every purchase (see `docs/revenuecat.md`). Set it with `fly secrets set REVENUECAT_SECRET_API_KEY=sk_... -a mecena --stage`.
   - `MECENA_SIGNUP_CODE`: default invite code for sign-up (more codes, with caps and gifts: `npm run invite`, see above).
   - `MECENA_SIGNUP_OPEN`: `1` = open sign-up; invite codes become optional and still gift.

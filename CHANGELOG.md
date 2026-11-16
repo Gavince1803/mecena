@@ -38,6 +38,17 @@ The app's interface is in Spanish, so entries quote screen labels as the user se
 
 ### Added
 
+- The app can now run without any AI on the server, so the owner no longer has to pay for
+  every user's AI with their own Anthropic key. In production without `ANTHROPIC_API_KEY` (or
+  with `MECENA_NO_AI=1`) the honest deterministic versions stay (interview, rule-based draft,
+  dossier, fit), and the mocks written for tests and the demo, which would show a real person
+  made-up data (a fixed invoice, a scripted 61 → 84 jury, invented deep-research results), are
+  switched off: invoices and work photos are typed by hand, and the jury and deep research say
+  they need AI and point to the user's own assistant. Two new ways to improve a draft cost Mecena
+  nothing: «Completa los huecos» turns every «[Completa: …]» into a question whose answer replaces
+  the gap word for word, and «Mejóralo con tu asistente» copies a prompt (Mecena's rules, the
+  bases, the user's words and the draft) to paste into any chat, free plans included, and takes
+  the answer back into the draft. The jury page offers the same for the simulated jury. (#83)
 - New MCP tools so that the user's own Claude writes the application and plays the simulated
   jury: `get_application_context` gives it Mecena's drafting rules, the profile, the user's own
   words and the call, and `save_application_draft` checks what it wrote (allowed expenses, the

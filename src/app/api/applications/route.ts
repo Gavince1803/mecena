@@ -7,6 +7,7 @@ import { requireProfile, requireUser, resolveProfile } from "@/server/auth";
 import { body, json, route } from "@/server/http";
 import { idempotent } from "@/server/idempotency";
 import { limitAi } from "@/server/ai-limits";
+import { isServerAiOff } from "@/server/ai/llm";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,8 @@ export const GET = route(async (req: Request) => {
   const sp = new URL(req.url).searchParams;
   const { profile } = await requireProfile(req, sp.get("profileId"));
   const application = findDraft({ callId: sp.get("callId") ?? "", profileId: profile.id });
-  return json({ application, sources: application ? draftSources(application) : {} });
+  // serverAi: false when the server has no AI for real users (the page offers the user's own assistant instead)
+  return json({ application, sources: application ? draftSources(application) : {}, serverAi: !isServerAiOff() });
 });
 
 export const POST = route(idempotent(async (req: Request) => {
