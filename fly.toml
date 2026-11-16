@@ -8,7 +8,7 @@ primary_region = "cdg"
 [env]
   NODE_ENV = "production"
   MECENA_DATA_DIR = "/data"
-  MECENA_PUBLIC_URL = "https://mecena.fly.dev"
+  MECENA_PUBLIC_URL = "https://mecena.lgarbayo.com"
 
 [[mounts]]
   source = "mecena_data"

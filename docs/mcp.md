@@ -4,7 +4,7 @@ Mecena expone **10 herramientas** como servidor MCP. Salen del mismo módulo que
 
 | Puerta | Para qué | Datos que ve | Autenticación | IA de Mecena |
 |---|---|---|---|---|
-| **MCP remoto** `https://mecena.fly.dev/api/mcp` (Streamable HTTP) | Uso normal y **la demo**: Claude trabaja con tu cuenta real de la app | Los de la app publicada: tu perfil, tus obras, tus compras | Token personal (`Authorization: Bearer mcn_…`), creado en **Cuenta → Conectar con Claude** | Ninguna: redacta y puntúa tu Claude |
+| **MCP remoto** `https://mecena.lgarbayo.com/api/mcp` (Streamable HTTP) | Uso normal y **la demo**: Claude trabaja con tu cuenta real de la app | Los de la app publicada: tu perfil, tus obras, tus compras | Token personal (`Authorization: Bearer mcn_…`), creado en **Cuenta → Conectar con Claude** | Ninguna: redacta y puntúa tu Claude |
 | MCP local (stdio, `npm run mcp`) | Desarrollo | Los del `MECENA_DATA_DIR` de tu ordenador | `MECENA_USER_EMAIL` (quien lanza el proceso ya tiene el disco) | Ninguna |
 | Agente en la app (`/api/agent`) | Botón «Pregúntale» en el móvil | Los de la app | Sesión de la web | Sí (`ANTHROPIC_API_KEY` del servidor) |
 
@@ -23,13 +23,13 @@ Mecena expone **10 herramientas** como servidor MCP. Salen del mismo módulo que
 
 `draft_application` y `score_application` (redacción y tribunal con la IA de Mecena) siguen existiendo, pero **solo en el agente de la app**. Por MCP, además, todas las llamadas se ejecutan con la IA de Mecena forzada a sus versiones deterministas: aunque una herramienta llamase al modelo por debajo, no llegaría nunca a la API de Anthropic. Por eso, actualizar el perfil desde Claude no lanza la búsqueda en BDNS en segundo plano: se lanza la próxima vez que abras `/convocatorias` en la app.
 
-Cada llamada devuelve **dos bloques de texto**: un resumen corto en castellano y, después, el JSON completo. Los enlaces (`url`) usan `MECENA_PUBLIC_URL` (en Fly, `https://mecena.fly.dev`) y se abren con la sesión de tu cuenta. Los errores también llegan en castellano (datos no válidos, «no encontrado», muro de pago con el enlace a `/pro`, demasiadas peticiones).
+Cada llamada devuelve **dos bloques de texto**: un resumen corto en castellano y, después, el JSON completo. Los enlaces (`url`) usan `MECENA_PUBLIC_URL` (en Fly, `https://mecena.lgarbayo.com`) y se abren con la sesión de tu cuenta. Los errores también llegan en castellano (datos no válidos, «no encontrado», muro de pago con el enlace a `/pro`, demasiadas peticiones).
 
-## 1. Conectar Claude con tu cuenta de mecena.fly.dev (MCP remoto)
+## 1. Conectar Claude con tu cuenta de mecena.lgarbayo.com (MCP remoto)
 
 ### Crea tu token
 
-1. Entra en https://mecena.fly.dev con tu cuenta.
+1. Entra en https://mecena.lgarbayo.com con tu cuenta.
 2. Toca tu inicial (arriba a la derecha) → **Conectar con Claude** (`/cuenta`).
 3. Ponle un nombre («Claude Desktop», «Portátil de la demo»…) y pulsa **Crear token**.
 4. Copia el token `mcn_…` **ahora**: solo se muestra una vez (guardamos su huella sha256, no el token). La misma pantalla te da ya rellenos el comando para Claude Code y el bloque para Claude Desktop.
@@ -51,7 +51,7 @@ Claude Desktop lanza los servidores MCP de su fichero de configuración como pro
      "mcpServers": {
        "mecena": {
          "command": "npx",
-         "args": ["-y", "mcp-remote", "https://mecena.fly.dev/api/mcp", "--header", "Authorization:${MECENA_AUTH}"],
+         "args": ["-y", "mcp-remote", "https://mecena.lgarbayo.com/api/mcp", "--header", "Authorization:${MECENA_AUTH}"],
          "env": { "MECENA_AUTH": "Bearer mcn_PEGA_AQUI_TU_TOKEN" }
        }
      }
@@ -66,7 +66,7 @@ Claude Desktop lanza los servidores MCP de su fichero de configuración como pro
 Claude Code habla Streamable HTTP directamente, con la cabecera:
 
 ```bash
-claude mcp add --transport http mecena https://mecena.fly.dev/api/mcp \
+claude mcp add --transport http mecena https://mecena.lgarbayo.com/api/mcp \
   --header "Authorization: Bearer mcn_PEGA_AQUI_TU_TOKEN"
 # añade --scope user para tenerlo en todos tus proyectos
 ```
@@ -80,10 +80,10 @@ El servidor es **sin estado** (cada `POST` es independiente, sin `Mcp-Session-Id
 ```bash
 TOKEN=mcn_…   # tu token
 H=(-H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' -H 'accept: application/json, text/event-stream')
-curl -s https://mecena.fly.dev/api/mcp "${H[@]}" \
+curl -s https://mecena.lgarbayo.com/api/mcp "${H[@]}" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"0"}}}'
-curl -s https://mecena.fly.dev/api/mcp "${H[@]}" -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
-curl -s https://mecena.fly.dev/api/mcp "${H[@]}" \
+curl -s https://mecena.lgarbayo.com/api/mcp "${H[@]}" -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
+curl -s https://mecena.lgarbayo.com/api/mcp "${H[@]}" \
   -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"search_calls","arguments":{}}}'
 ```
 
@@ -98,7 +98,7 @@ Sin token, o con uno revocado, responde `401` con el motivo en castellano. `GET`
 ## 2. Pagos: dónde cuenta tu compra
 
 - **App y MCP remoto** leen la misma cuenta en el mismo servidor: una compra hecha en el móvil (RevenueCat) desbloquea Pro también en Claude, en la siguiente llamada. El mensaje de pago lo dice así.
-- **MCP local (stdio)** lee los datos de tu ordenador: la compra solo cuenta si la haces en la web que usa ese mismo `MECENA_DATA_DIR` (tu `npm run dev` o su túnel). Una compra en mecena.fly.dev **no** llega al MCP local; para eso, usa el MCP remoto. El mensaje de pago del MCP local lo avisa.
+- **MCP local (stdio)** lee los datos de tu ordenador: la compra solo cuenta si la haces en la web que usa ese mismo `MECENA_DATA_DIR` (tu `npm run dev` o su túnel). Una compra en mecena.lgarbayo.com **no** llega al MCP local; para eso, usa el MCP remoto. El mensaje de pago del MCP local lo avisa.
 
 Sin Pro, las herramientas aplican los mismos muros que la app: 3 convocatorias al mes (`search_calls`, `explain_call`), dossier general en vez del adaptado (`build_dossier`, `export_dossier_pdf`), el borrador gratis solo para las convocatorias del mes (`get_application_context`, `save_application_draft`) y una pasada por el tribunal por solicitud (`get_jury_brief`, `save_jury_score`). Una Solicitud premium desbloquea una convocatoria concreta: todo lo de Pro para ella. Ninguna consulta sirve para rodearlos.
 
@@ -106,7 +106,7 @@ Sin Pro, las herramientas aplican los mismos muros que la app: 3 convocatorias a
 
 **Antes de subir al escenario**
 
-1. En el móvil de la demo, entra en mecena.fly.dev con la cuenta de la demo, haz la entrevista y la compra sandbox (pasos 2-5): la adaptación del dossier a una convocatoria es Pro.
+1. En el móvil de la demo, entra en mecena.lgarbayo.com con la cuenta de la demo, haz la entrevista y la compra sandbox (pasos 2-5): la adaptación del dossier a una convocatoria es Pro.
 2. Con esa misma cuenta (en el móvil o en el portátil): **Cuenta → Conectar con Claude → Crear token** y pega el bloque en Claude Desktop del portátil (sección 1). Reinicia Claude Desktop y comprueba que salen las 10 herramientas.
 3. Deja escrito en Claude Desktop (sin enviar):
    > **Hazme el dossier para los Premios Qué! Arte y pásamelo en PDF.**

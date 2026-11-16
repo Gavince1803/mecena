@@ -1,4 +1,4 @@
-# Deploys mecena.fly.dev on every push to main (and on demand from the Actions tab).
+# Deploys mecena.lgarbayo.com on every push to main (and on demand from the Actions tab).
 # Pull requests only run the checks.
 # Needs the repo secret FLY_API_TOKEN: a deploy token scoped to the app,
 #   fly tokens create deploy -a mecena -x 8760h | gh secret set FLY_API_TOKEN

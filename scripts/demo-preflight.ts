@@ -2,7 +2,7 @@
 //
 //   MECENA_DEMO_EMAIL=… MECENA_DEMO_PASSWORD=… npm run demo:preflight [-- <url>] [--load <scenario>] [--allow-ai]
 //
-// <url> defaults to https://mecena.fly.dev (or PREFLIGHT_URL). Optional PREFLIGHT_BASIC_AUTH=user:pass when the
+// <url> defaults to https://mecena.lgarbayo.com (or PREFLIGHT_URL). Optional PREFLIGHT_BASIC_AUTH=user:pass when the
 // deployment is behind Basic auth. Exit code 0 = all green, 1 = something red.
 //
 // Harmless by default: GETs, one login, and the account's own «IA simulada» switch turned on while it reads the feed
@@ -26,7 +26,7 @@ const opt = (name: string) => {
   return i >= 0 ? args[i + 1] : undefined;
 };
 const positional = args.filter((a, i) => !a.startsWith("--") && !(i > 0 && args[i - 1] === "--load"));
-const BASE = (positional[0] ?? process.env.PREFLIGHT_URL ?? "https://mecena.fly.dev").replace(/\/$/, "");
+const BASE = (positional[0] ?? process.env.PREFLIGHT_URL ?? "https://mecena.lgarbayo.com").replace(/\/$/, "");
 const EMAIL = process.env.MECENA_DEMO_EMAIL ?? "";
 const PASSWORD = process.env.MECENA_DEMO_PASSWORD ?? "";
 const LOAD = opt("load");

@@ -2,7 +2,7 @@
 
 Thank you so much for taking the time to read this. It genuinely means a lot. Mecena is a small project born at 1hack-2026, and the fact that you are here considering contributing to it is something we do not take for granted.
 
-Mecena helps visual artists and small businesses (*pymes*) in Spain find public calls for grants and aid, build a dossier, draft an application and rehearse it in front of a simulated jury. It is a Next.js app, live at <https://mecena.fly.dev>. Bug reports, fixes, ideas, documentation and tests are all welcome.
+Mecena helps visual artists and small businesses (*pymes*) in Spain find public calls for grants and aid, build a dossier, draft an application and rehearse it in front of a simulated jury. It is a Next.js app, live at <https://mecena.lgarbayo.com>. Bug reports, fixes, ideas, documentation and tests are all welcome.
 
 ## How long will it take?
 
@@ -139,7 +139,7 @@ If both pass on a clean clone, your environment is ready.
 
 7. **Review.** At least **one maintainer** reviews every PR, and a maintainer merges it once it is approved and CI is green. The same rule applies to the maintainers' own work: changes reach `main` through a pull request, not a direct push.
 
-8. **Merge means production.** Every push to `main` runs `.github/workflows/deploy.yml`, which runs `npm run check` and then deploys to <https://mecena.fly.dev>. A deploy restarts the single machine, so the app is briefly unavailable. That is why only reviewed, green PRs are merged, and why a maintainer may occasionally hold a merge (for example during a live demo).
+8. **Merge means production.** Every push to `main` runs `.github/workflows/deploy.yml`, which runs `npm run check` and then deploys to <https://mecena.lgarbayo.com>. A deploy restarts the single machine, so the app is briefly unavailable. That is why only reviewed, green PRs are merged, and why a maintainer may occasionally hold a merge (for example during a live demo).
 
 ## Coding standards
 
@@ -301,7 +301,7 @@ test(matching): cover free limit, search, min employees, age parsing, territory 
 ```
 
 ```
-docs(mcp): connect Claude Desktop and Claude Code to mecena.fly.dev with a personal token
+docs(mcp): connect Claude Desktop and Claude Code to mecena.lgarbayo.com with a personal token
 ```
 
 ```
