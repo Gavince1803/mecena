@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { NextRequest } from "next/server";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { TOOL_NAMES } from "@/contracts";
+import { MCP_TOOL_NAMES } from "@/contracts";
 import { McpTokenCreated, McpTokensResponse } from "@/contracts/api";
 import { DELETE as mcpDelete, GET as mcpGet, POST as mcpPost } from "@/app/api/mcp/route";
 import { GET as listTokens, POST as createToken } from "@/app/api/mcp-tokens/route";
@@ -115,7 +115,7 @@ describe("remote MCP endpoint (/api/mcp)", () => {
     const c = await connect(token);
     expect(c.getInstructions()).toMatch(/Mecena prepara/);
     const { tools } = await c.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual([...TOOL_NAMES].sort());
+    expect(tools.map((t) => t.name).sort()).toEqual([...MCP_TOOL_NAMES].sort());
 
     const profile = await call(c, "get_profile");
     expect(profile.isError).toBe(false);
@@ -131,7 +131,7 @@ describe("remote MCP endpoint (/api/mcp)", () => {
     await seedOnboardedCreator();
     const { token } = await newToken();
     const c = await connect(token);
-    const denied = await call(c, "draft_application", { callId: CALL_ID });
+    const denied = await call(c, "get_application_context", { callId: CALL_ID });
     expect(denied.isError).toBe(true);
     expect(denied.text).toMatch(/se guarda en tu cuenta de Mecena/); // remote: a phone purchase really counts here
 

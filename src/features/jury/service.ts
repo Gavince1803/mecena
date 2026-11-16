@@ -1,9 +1,11 @@
 // Owned by WP-08. Simulated jury: 3 judges in parallel on the call's criteria (official or estimated), scores clamped
 // and averaged, normalised to 100. "Aplicar mejoras" revises from the user's facts (idempotent, undoable) and re-scores.
-import { ConflictError, type Application, type ApplicationSnapshot, type JudgePersona, type JudgeVerdict, type JuryScore, type UserFact } from "@/contracts";
+import { BadRequestError, ConflictError, PaymentRequiredError, type Application, type ApplicationSnapshot, type CallCriterion, type JudgePersona, type JudgeVerdict, type JuryScore, type ToolContext, type UserFact } from "@/contracts";
 import { getAi } from "@/server/ai";
 import { getApplication, getCall, getProfile, getTranscript, latestJuryScore, listJuryScores, listWorks, newId, nowIso, saveApplication, saveJuryScore } from "@/server/store";
+import { JURY_RUNS_USED_MESSAGE, juryRunsLeft, resolveEntitlement, withJuryRun } from "@/features/purchases/server";
 import { CREATOR_JUDGES, criteriaFor, isVisualCriterion, judgesFor } from "./rules";
+import { judgeSystem } from "./ai";
 
 /** Default personas (creator calls); business applications use BUSINESS_JUDGES (see ./rules). */
 export const JUDGES: JudgePersona[] = CREATOR_JUDGES;
@@ -65,16 +67,34 @@ async function runScoring(application: Application, emit: (e: JudgeEvent) => voi
       return v;
     }),
   );
+  const score = await saveJuryScore(aggregateVerdicts({ application, criteria: call.criteria, judges, verdicts, estimated }));
+  console.info(`[jury] ${application.id} v${application.version} scored ${score.total} in ${ms(t0)}`);
+  return score;
+}
 
+/**
+ * The panel's score from one verdict per judge (verdicts[i] is judges[i]'s): each criterion's points clamped to its
+ * maximum and averaged across judges, the total normalised to 100, each distinct fix listed once. No I/O: the server
+ * jury and a jury run by the user's own Claude (MCP) both go through it.
+ */
+export function aggregateVerdicts(input: {
+  application: Pick<Application, "id" | "version">;
+  criteria: readonly CallCriterion[];
+  judges: JudgePersona[];
+  verdicts: readonly JudgeVerdict[];
+  estimated: boolean;
+}): JuryScore {
+  const { application, criteria: callCriteria, judges, verdicts, estimated } = input;
+  const max = callCriteria.reduce((a, c) => a + c.maxPoints, 0) || 100;
   const seen = new Set<string>();
-  const criteria = call.criteria.map((c, i) => {
+  const criteria = callCriteria.map((c, i) => {
     const byJudge = verdicts.map((v, j) => {
-      const s = scoreFor(v, c, i, call.criteria.length);
+      const s = scoreFor(v, c, i, callCriteria.length);
       return { judgeId: judges[j].id, points: Math.max(0, Math.min(c.maxPoints, s?.points ?? 0)), comment: s?.comment ?? "" };
     });
     const points = Math.round((byJudge.reduce((a, b) => a + b.points, 0) / Math.max(1, byJudge.length)) * 10) / 10;
     // a fix proposed for two criteria is listed once (first criterion), so each checkbox is one distinct action
-    const fixes = [...new Set(verdicts.flatMap((v) => scoreFor(v, c, i, call.criteria.length)?.fixes ?? []).map((f) => f.trim()).filter(Boolean))]
+    const fixes = [...new Set(verdicts.flatMap((v) => scoreFor(v, c, i, callCriteria.length)?.fixes ?? []).map((f) => f.trim()).filter(Boolean))]
       .filter((f) => !seen.has(fold(f)))
       .slice(0, 3);
     fixes.forEach((f) => seen.add(fold(f)));
@@ -82,9 +102,7 @@ async function runScoring(application: Application, emit: (e: JudgeEvent) => voi
   });
   const total = Math.max(0, Math.min(100, Math.round((criteria.reduce((a, c) => a + c.points, 0) / max) * 100)));
   const summary = [...new Set(verdicts.map((v) => v.overall).filter(Boolean))].join(" ");
-  console.info(`[jury] ${application.id} v${application.version} scored ${total} in ${ms(t0)}`);
-
-  return saveJuryScore({
+  return {
     id: newId("score"),
     applicationId: application.id,
     applicationVersion: application.version,
@@ -95,7 +113,7 @@ async function runScoring(application: Application, emit: (e: JudgeEvent) => voi
     disclaimer: estimated ? DISCLAIMER_ESTIMATED : DISCLAIMER,
     estimated,
     createdAt: nowIso(),
-  });
+  };
 }
 
 /**
@@ -122,6 +140,56 @@ export function scoreApplication(applicationId: string, opts: { onJudge?: (e: Ju
     run.promise.finally(() => run.listeners.delete(listener)).catch(() => {});
   }
   return run.promise;
+}
+
+// ---- Client-side jury (MCP): the user's own Claude plays the judges, Mecena hands it the brief and scores the verdicts ----
+
+/** The panel and criteria an application is judged with (same as the server jury). */
+function panelFor(application: Application) {
+  const rawCall = getCall(application.callId);
+  const kind = getProfile(application.profileId).kind;
+  const { criteria, estimated } = criteriaFor(rawCall, kind);
+  return { rawCall, criteria, estimated, judges: judgesFor(kind) };
+}
+
+const CLIENT_JURY_FORMAT = `Haz de cada juez de "judges" por separado, con su perfil ("focus"), y escribe un veredicto por juez: {judgeId, scores: [{criterionId, points, comment, fixes}], overall}. Un "score" por cada criterio de "criteria", con su id exacto y puntos entre 0 y su "maxPoints". Los criterios con "writtenOnly" se valoran solo por lo escrito.
+Después guarda los veredictos con save_jury_score, con el "applicationVersion" de esta solicitud (application.version). Mecena hace la media de los jueces y la normaliza a 100.`;
+
+/** What a client model needs to run the jury itself (get_jury_brief). Without Pro, a run must be left (not used yet). */
+export async function clientJuryBrief(applicationId: string, ctx: Pick<ToolContext, "appUserId">) {
+  const application = getApplication(applicationId);
+  const { rawCall, criteria, estimated, judges } = panelFor(application);
+  const left = juryRunsLeft(await resolveEntitlement(ctx.appUserId), application.id);
+  if (left <= 0) throw new PaymentRequiredError(JURY_RUNS_USED_MESSAGE);
+  return {
+    instructions: `${judgeSystem(estimated)}\n${CLIENT_JURY_FORMAT}`,
+    judges,
+    criteria: criteria.map((c) => ({ id: c.id, name: c.name, description: c.description, maxPoints: c.maxPoints, ...(isVisualCriterion(c) ? { writtenOnly: true } : {}) })),
+    estimated,
+    application,
+    call: { id: rawCall.id, title: rawCall.title, summary: rawCall.summary, allowedExpenses: rawCall.allowedExpenses, maxAmountEur: rawCall.amountEur.max ?? null },
+    works: listWorks(application.profileId).map((w) => w.sheet),
+    runsLeft: Number.isFinite(left) ? left : null,
+  };
+}
+
+/**
+ * Score an application from verdicts a client model wrote (save_jury_score). They must be for the version it was
+ * briefed on (else ConflictError) and come from the panel, one per judge (else BadRequestError). Scored exactly like
+ * the server jury (aggregateVerdicts) and counted as one jury run without Pro.
+ */
+export async function saveClientScore(input: { applicationId: string; applicationVersion: number; verdicts: JudgeVerdict[] }, ctx: Pick<ToolContext, "appUserId">): Promise<JuryScore> {
+  const application = getApplication(input.applicationId);
+  if (input.applicationVersion !== application.version)
+    throw new ConflictError(`La solicitud ha cambiado (ahora es la versión ${application.version}): vuelve a pedir get_jury_brief y puntúa la versión actual.`);
+  const { criteria, estimated, judges } = panelFor(application);
+  const byJudge = new Map(input.verdicts.map((v) => [v.judgeId.trim(), v]));
+  const unknown = [...byJudge.keys()].filter((id) => !judges.some((j) => j.id === id));
+  const missing = judges.filter((j) => !byJudge.has(j.id)).map((j) => j.id);
+  if (unknown.length || missing.length || byJudge.size !== input.verdicts.length)
+    throw new BadRequestError(`Necesito un veredicto por cada juez del tribunal (${judges.map((j) => j.id).join(", ")}), sin repetir ninguno.`);
+  const verdicts = judges.map((j) => byJudge.get(j.id)!);
+  return withJuryRun(ctx.appUserId, application.id, () => saveJuryScore(aggregateVerdicts({ application, criteria, judges, verdicts, estimated })));
 }
 
 /** The score of the current version if there is one (no AI call), otherwise score it (or join the scoring in flight). */

@@ -1,5 +1,5 @@
 /**
- * In-app agent over the shared tools module (WP-04). Same 8 tools as the MCP server.
+ * In-app agent over the shared tools module (WP-04): AGENT_TOOL_NAMES, the 8 tools that run on Mecena's AI.
  * Real mode: Claude tool-use loop (./real.ts). Mock mode (no ANTHROPIC_API_KEY / MECENA_AI_MOCK=1): keyword router (./mock.ts).
  */
 import type { ToolContext } from "@/contracts";

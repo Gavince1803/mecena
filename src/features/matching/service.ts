@@ -130,8 +130,13 @@ const STATUS_RANK: Record<Call["status"], number> = { open: 0, upcoming: 1, recu
 
 const cacheKey = (profile: Profile, call: Call) => `${profile.id}|${profile.updatedAt}|${call.id}|${call.verifiedAt}`;
 
-/** Rule match + AI explanation (cached per profile version × call version). Eligibility, score and the list of what is missing stay the rules'. */
-export async function explainCall(input: { callId: string; profileId: string }): Promise<{ call: Call; match: MatchResult; checklist: string[] }> {
+/**
+ * The call explained for this profile. The rules give the score, eligibility and what is missing; the model only words
+ * "why you fit" and the summary (cached per profile × call version). `ai: false` (the MCP front door, where the user's
+ * own Claude does the explaining) never calls the model and never writes the cache: the cached wording if there is
+ * one, the rules' wording otherwise.
+ */
+export async function explainCall(input: { callId: string; profileId: string; ai?: boolean }): Promise<{ call: Call; match: MatchResult; checklist: string[] }> {
   const profile = getProfile(input.profileId);
   const call = getCall(input.callId);
   const base = ruleMatch(profile, call);
@@ -143,6 +148,8 @@ export async function explainCall(input: { callId: string; profileId: string }):
     const { cacheKey: _k, ...match } = cached;
     return { call, match: { ...match, score: base.score, eligible: base.eligible, whatYouMiss: base.whatYouMiss }, checklist: call.requiredDocuments };
   }
+
+  if (input.ai === false) return { call, match: base, checklist: call.requiredDocuments };
 
   let match: MatchResult = base;
   try {

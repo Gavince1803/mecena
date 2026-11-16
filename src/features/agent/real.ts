@@ -8,9 +8,9 @@
  * trimmed tool JSON.
  */
 import type Anthropic from "@anthropic-ai/sdk";
-import { TOOL_NAMES, toolSchemas, type ToolContext } from "@/contracts";
+import { AGENT_TOOL_NAMES, toolSchemas, type ToolContext } from "@/contracts";
 import { AiError, anthropic, chargeAiCall, modelFor } from "@/server/ai/llm";
-import { isToolName } from "@/tools/registry";
+import { isAgentToolName } from "@/tools/registry";
 import { isExpectedToolError, summarizeToolResult, toolErrorMessage, toolInputJsonSchema } from "@/tools/present";
 import type { AgentHistory, AgentToolCall, AgentTurn, RunToolFn } from "./types";
 
@@ -43,7 +43,7 @@ export interface AgentLlmClient {
 }
 
 export function agentTools(): Anthropic.Messages.Tool[] {
-  return TOOL_NAMES.map((name) => ({ name, description: toolSchemas[name].description, input_schema: toolInputJsonSchema(name) }));
+  return AGENT_TOOL_NAMES.map((name) => ({ name, description: toolSchemas[name].description, input_schema: toolInputJsonSchema(name) }));
 }
 
 const clip = (s: string) => (s.length > AGENT_MAX_MESSAGE_CHARS ? `${s.slice(0, AGENT_MAX_MESSAGE_CHARS)}… (recortado)` : s);
@@ -119,7 +119,7 @@ export async function runRealAgent(message: string, history: AgentHistory, deps:
     messages.push({ role: "assistant", content: res.content as Anthropic.Messages.ContentBlockParam[] });
     const results: Anthropic.Messages.ToolResultBlockParam[] = [];
     for (const use of uses) {
-      if (!isToolName(use.name)) {
+      if (!isAgentToolName(use.name)) {
         toolCalls.push({ name: use.name, input: use.input, ok: false });
         results.push({ type: "tool_result", tool_use_id: use.id, is_error: true, content: `Herramienta desconocida: ${use.name}` });
         continue;

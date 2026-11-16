@@ -72,6 +72,11 @@ export async function grantPro(appUserId = DEMO_APP_USER_ID) {
   return saveEntitlement({ appUserId, pro: true, premiumCredits: 0, source: "mock", updatedAt: nowIso() });
 }
 
+/** One Solicitud premium credit, without Pro. */
+export async function grantCredit(appUserId = DEMO_APP_USER_ID) {
+  return saveEntitlement({ appUserId, pro: false, premiumCredits: 1, source: "mock", updatedAt: nowIso() });
+}
+
 /**
  * Build a Request for calling a route handler directly. Sends the current session cookie (see useSession/loginDemo);
  * `cookie` overrides it, `cookie: null` sends none.

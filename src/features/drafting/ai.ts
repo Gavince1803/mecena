@@ -83,7 +83,8 @@ export function mockDraft({ profile, call, transcript }: DraftApplicationInput) 
   return enforce({ sections, budget: budgetFromNeeds(profile, call), checklist: buildChecklist(call) }, call, transcript);
 }
 
-const SYSTEM = `Eres Mecena: preparas solicitudes de convocatorias (becas, premios, ayudas) para artistas, pymes y autónomos de España.
+/** The drafting rules, shared by the server model and a client model writing the draft itself (MCP). */
+export const DRAFT_SYSTEM = `Eres Mecena: preparas solicitudes de convocatorias (becas, premios, ayudas) para artistas, pymes y autónomos de España.
 Escribe en español de España y en primera persona, con la voz de la persona: usa sus frases y su vocabulario de la transcripción (cítalas o parafraséalas de cerca), pero bien escritas: la transcripción viene del dictado o del teclado y puede traer erratas que la solicitud no debe arrastrar.
 ${WORDING_RULE}
 NUNCA inventes datos (fechas, cifras, exposiciones, clientes, premios) que no estén en la transcripción o el perfil. Si falta algo que las bases piden, escribe "[Completa: qué falta]".
@@ -103,7 +104,7 @@ export const draftingAi: AiSlice<"draftApplication"> = {
       const { profile, call, transcript, works } = input;
       const content = await structured({
         tier: "smart",
-        system: SYSTEM,
+        system: DRAFT_SYSTEM,
         schema: ApplicationDraftContent,
         user: JSON.stringify(
           {

@@ -1,11 +1,15 @@
 /**
  * The Mecena MCP server definition, shared by both transports (no side effects, safe to import from Next):
  * the remote Streamable HTTP endpoint (./http.ts, POST /api/mcp) and the local stdio server (./server.ts).
- * Same 8 tools as the in-app agent, from the same module (src/tools).
+ * Its tools (MCP_TOOL_NAMES) come from the same module as the in-app agent's (src/tools), but nothing here runs on
+ * Mecena's AI: the user's own Claude writes the drafts and plays the jury (get_application_context →
+ * save_application_draft, get_jury_brief → save_jury_score), and every call runs with the AI forced to the
+ * deterministic mocks as a safety net (ADR-026), so an MCP client never spends the server's Anthropic key.
  */
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { serverEnv, toolSchemas, TOOL_NAMES, UnauthorizedError, type ToolContext, type ToolName } from "@/contracts";
+import { MCP_TOOL_NAMES, serverEnv, toolSchemas, UnauthorizedError, type ToolContext, type ToolName } from "@/contracts";
+import { runWithAiSwitches } from "@/features/demo/ai-mode";
 import { findUserByEmail, toolContextFor } from "@/server/auth";
 import { runTool } from "@/tools/registry";
 import { summarizeToolResult, toolErrorMessage } from "@/tools/present";
@@ -13,7 +17,9 @@ import { summarizeToolResult, toolErrorMessage } from "@/tools/present";
 export const MCP_INSTRUCTIONS = [
   "Mecena ayuda a artistas, ilustradores, fotógrafos, pymes y autónomos con el papeleo de convocatorias, becas, premios y subvenciones.",
   "Mecena prepara; la persona usuaria revisa y presenta. Nunca inventes datos del perfil que no haya dicho.",
-  "Flujo típico: search_calls → explain_call → build_dossier (con callId) → export_dossier_pdf → draft_application → score_application.",
+  "Flujo típico: search_calls → explain_call → build_dossier (con callId) → export_dossier_pdf → get_application_context → save_application_draft → get_jury_brief → save_jury_score.",
+  "Tú redactas la solicitud y haces de tribunal: Mecena te da el contexto y las reglas (get_application_context, get_jury_brief), y comprueba y guarda lo que escribes (save_application_draft, save_jury_score). Sigue sus instrucciones al pie de la letra y escribe solo con los datos y las palabras de la persona.",
+  "explain_call te da las bases y el encaje calculado por reglas: explícaselas tú con claridad.",
   "Cada herramienta devuelve un resumen en español y después el JSON completo. Comparte siempre los enlaces (url) con la persona usuaria: se abren con su sesión de Mecena.",
   "Si una herramienta pide Mecena Pro, explícalo con amabilidad y comparte el enlace de pago; no intentes rodearlo con otras herramientas.",
 ].join(" ");
@@ -45,6 +51,12 @@ export async function mcpToolContext(email = serverEnv().mcpUserEmail): Promise<
 
 /** Text content blocks returned for a tool call: [human summary, JSON]. */
 export async function callToolForMcp(name: ToolName, args: unknown, run: RunFn = runTool, context: () => Promise<ToolContext> = () => mcpToolContext()) {
+  // Safety net: whatever a tool calls underneath, over MCP it never reaches the Anthropic API (the deterministic
+  // versions answer instead), so connecting Claude to Mecena costs the server nothing in AI.
+  return runWithAiSwitches({ aiMock: true }, () => callTool(name, args, run, context));
+}
+
+async function callTool(name: ToolName, args: unknown, run: RunFn, context: () => Promise<ToolContext>) {
   let caller: ToolContext["caller"] = "mcp";
   try {
     const ctx = await context();
@@ -66,7 +78,7 @@ export function createMcpServer(opts: McpServerOptions = {}): McpServer {
   const server = new McpServer({ name: "mecena", version: "0.1.0" }, { instructions: MCP_INSTRUCTIONS });
   const context = opts.context ?? (() => mcpToolContext(opts.userEmail));
   spanishInputValidation(server);
-  for (const name of TOOL_NAMES) {
+  for (const name of MCP_TOOL_NAMES) {
     const def = toolSchemas[name];
     server.registerTool(name, { description: def.description, inputSchema: def.input.shape }, async (args: unknown) => callToolForMcp(name, args, opts.run, context));
   }

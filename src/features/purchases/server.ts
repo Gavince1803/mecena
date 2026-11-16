@@ -164,6 +164,9 @@ export async function reserveDraftCredit(appUserId: string): Promise<DraftReserv
   };
 }
 
+/** The paywall once an application's included jury runs are used up. */
+export const JURY_RUNS_USED_MESSAGE = `Tu solicitud premium incluye ${JURY_RUNS_PER_APPLICATION} pasadas por el tribunal y ya las has usado. Con Mecena Pro, sin límite.`;
+
 /** Jury runs left for this application without Pro (Infinity with Pro). */
 export function juryRunsLeft(e: EntitlementState, applicationId: string): number {
   if (view(e).pro) return Infinity;
@@ -182,7 +185,7 @@ export async function withJuryRun<T>(appUserId: string, applicationId: string, f
     if (view(cur).pro) return false;
     const runs = cur.juryRuns?.[applicationId] ?? 0;
     if (runs >= JURY_RUNS_PER_APPLICATION)
-      throw new PaymentRequiredError(`Tu solicitud premium incluye ${JURY_RUNS_PER_APPLICATION} pasadas por el tribunal y ya las has usado. Con Mecena Pro, sin límite.`);
+      throw new PaymentRequiredError(JURY_RUNS_USED_MESSAGE);
     // updatedAt is left alone: legacy credit accounting (legacyUsed) depends on it
     upsert(db, { ...cur, juryRuns: { ...cur.juryRuns, [applicationId]: runs + 1 } });
     return true;
