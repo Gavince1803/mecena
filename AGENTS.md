@@ -25,4 +25,4 @@ notes above.
   free layout`.
 - **Run `npm run check` (typecheck + tests) before you call the work finished,** and fix whatever
   it reports. The tests force AI mocks, so no API key is needed. Every push to `main` deploys to
-  https://mecena.fly.dev, so a red check must never reach `main`.
+  https://mecena.lgarbayo.com, so a red check must never reach `main`.

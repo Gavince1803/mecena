@@ -53,7 +53,7 @@ Built for **1hack-2026** (2026-11-13 / 2026-11-14) by a two-person team. The pro
 
 ## Live app
 
-**https://mecena.fly.dev** (open it on your phone in Chrome or Safari: dictation needs a real browser, not an in-app preview).
+**https://mecena.lgarbayo.com** (open it on your phone in Chrome or Safari: dictation needs a real browser, not an in-app preview).
 
 Sign-up on the live app is invite-only (every AI call spends the owner's Anthropic key): see [Accounts, invite codes and limits](#accounts-invite-codes-and-limits). To try everything without a code, run it locally: it takes two minutes and needs no API key.
 
@@ -115,7 +115,7 @@ To use real AI, put your key in `.env.local` (`ANTHROPIC_API_KEY=sk-ant-...`) an
 **5. Drive Mecena from Claude.** On the live app: *Cuenta → Conectar con Claude → Crear token*, then in Claude Code:
 
 ```sh
-claude mcp add --transport http mecena https://mecena.fly.dev/api/mcp \
+claude mcp add --transport http mecena https://mecena.lgarbayo.com/api/mcp \
   --header "Authorization: Bearer mcn_PEGA_AQUI_TU_TOKEN"
 ```
 
@@ -134,7 +134,7 @@ npm run calls:history                     # past editions and awards -> data/cal
 ```sh
 npm run invite -- create 1HACK --label 1hack-2026 --uses 50 --credits 1 --expires 2026-12-31
 npm run demo:reset                        # wipes the whole local database, every account included
-MECENA_DEMO_EMAIL=... MECENA_DEMO_PASSWORD=... npm run demo:preflight   # is mecena.fly.dev ready for the stage?
+MECENA_DEMO_EMAIL=... MECENA_DEMO_PASSWORD=... npm run demo:preflight   # is mecena.lgarbayo.com ready for the stage?
 npm run demo:images                       # regenerates the CC0 example artworks in data/demo/works
 ```
 
@@ -288,7 +288,7 @@ Besides `deploy.yml`, every pull request and every push to `main` run the `build
 1. **Freeze `main` from 18:00.** No merges until the demos end (21:00). Last fixes go in before 18:00; after that, only a fix for something that breaks the demo, agreed by the team.
 2. **Turn the auto-deploy off** to be safe: GitHub → Actions → "Deploy to Fly" → "···" → *Disable workflow* (or `gh workflow disable "Deploy to Fly"`). Turn it back on after the demos with *Enable workflow* (or `gh workflow enable "Deploy to Fly"`). Pull requests keep running their checks only while it is enabled.
 3. Staged secrets (`fly secrets list -a mecena` shows them as *Staged*) take effect on the next deploy: deploy before 18:00 so the demo runs with them.
-4. Before going on stage: `curl https://mecena.fly.dev/api/health` → `{"ok":true}`, sign in on the demo phone (sessions last 30 days, do not "Salir"), and check `fly status -a mecena` shows the machine `started` with its check passing.
+4. Before going on stage: `curl https://mecena.lgarbayo.com/api/health` → `{"ok":true}`, sign in on the demo phone (sessions last 30 days, do not "Salir"), and check `fly status -a mecena` shows the machine `started` with its check passing.
 
 The minute-by-minute stage script (Spanish) is in [`docs/demo-script.md`](docs/demo-script.md).
 
@@ -325,7 +325,7 @@ MECENA_LIVE_TESTS=1 ANTHROPIC_API_KEY=sk-ant-... npx vitest run tests/onboarding
 | `npm run calls:sweep` exits with "No hay clave de Anthropic" | A real sweep needs `ANTHROPIC_API_KEY`; use `--dry-run` to see what would enter without spending anything. |
 | `npm run mcp` exits with `MECENA_USER_EMAIL is not set` | Set `MECENA_USER_EMAIL` to the email of an account created at `/entrar` against the same `MECENA_DATA_DIR`. More MCP fixes in the table at the end of [`docs/mcp.md`](docs/mcp.md). |
 | The calls feed is empty | With "No hay convocatorias que coincidan con este filtro.", a search or quick filter is on: press *Ver todas las que encajan contigo*. With "Aún no encontramos convocatorias para tu perfil.", nothing matches yet: tell Mecena more in the interview (`/onboarding`). Calls whose edition already closed are listed apart, under *Próximas ediciones*. |
-| The live app is down right after a merge | Every push to `main` redeploys and restarts the only machine (~30 s). Check `curl https://mecena.fly.dev/api/health` and `fly status -a mecena`. If `db.json` was unreadable, the app serves `db.json.bak` and the next write repairs it. |
+| The live app is down right after a merge | Every push to `main` redeploys and restarts the only machine (~30 s). Check `curl https://mecena.lgarbayo.com/api/health` and `fly status -a mecena`. If `db.json` was unreadable, the app serves `db.json.bak` and the next write repairs it. |
 
 ## Support
 

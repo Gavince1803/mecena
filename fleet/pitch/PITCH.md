@@ -110,7 +110,7 @@ Es el canal de distribución: una escuela o asociación nos trae decenas de arti
 
 ## 7 · Lo que ya funciona (producto, no promesas)
 **En pantalla**
-- **De principio a fin, en producción** ([mecena.fly.dev](https://mecena.fly.dev)): voz → perfil y dossier → convocatorias reales (y ganadores parecidos) → compra → solicitud con tus palabras → tribunal simulado → justificación con fotos de facturas.
+- **De principio a fin, en producción** ([mecena.lgarbayo.com](https://mecena.lgarbayo.com)): voz → perfil y dossier → convocatorias reales (y ganadores parecidos) → compra → solicitud con tus palabras → tribunal simulado → justificación con fotos de facturas.
 - **37 convocatorias reales** estructuradas desde sus bases, con enlace a la fuente.
 - **213 concesiones históricas** como evidencia orientativa de qué gana (nunca una probabilidad inventada).
 - **RevenueCat real, en sandbox**: entitlement `pro`, paywall y compra de pruebas de verdad.

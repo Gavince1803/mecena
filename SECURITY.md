@@ -1,17 +1,17 @@
 # Security Policy
 
-Mecena is a web app that helps artists and small businesses find public grant calls and prepare their applications. It holds personal data (profiles, interview answers, photos of works, invoices) and spends a paid AI key on its users' behalf, so we take security reports seriously, even though it is a small project.
+Mecena is a web app that helps artists and small businesses find public grant calls and prepare their applications. It holds personal data (profiles, interview answers, photos of works, invoices) and, when the operator configures one, spends a paid AI key on its users' behalf, so we take security reports seriously, even though it is a small project.
 
 Please read this page before reporting. It explains what we support, how to reach us privately, how fast we answer, what we already know is weak, and how we handle disclosure.
 
 ## 1. Supported versions
 
-Mecena has no numbered releases. There is one line of development, the `main` branch, and every push to `main` is deployed automatically to the live app at <https://mecena.fly.dev> by `.github/workflows/deploy.yml`.
+Mecena has no numbered releases. There is one line of development, the `main` branch, and every push to `main` is deployed automatically to the live app at <https://mecena.lgarbayo.com> by `.github/workflows/deploy.yml`.
 
 | Version | Supported |
 |---------|-----------|
 | `main` branch (latest commit) | Yes |
-| The live deployment at <https://mecena.fly.dev> (always built from `main`) | Yes |
+| The live deployment at <https://mecena.lgarbayo.com> (always built from `main`) | Yes |
 | Older commits, other branches, forks and self-hosted copies that have not pulled the latest `main` | No |
 
 If you run your own copy, update to the latest `main` before reporting; the issue may already be fixed.
@@ -60,14 +60,14 @@ The more of this you can give us, the faster we can confirm and fix the issue:
 
 - **Prefer a local copy.** Clone the repository, run `npm install`, `cp .env.example .env.local` and `npm run dev` (see the Quickstart in the [README](README.md)). With `ANTHROPIC_API_KEY` left empty, every AI call runs on deterministic mocks, so you can test freely and nothing is spent.
 - On the live app, only use accounts you created yourself. To show a cross-account problem, use two of your own accounts; never open, change or keep other people's data beyond the minimum needed to prove the issue.
-- Do not run load tests, fuzzers or high-volume scanners against <https://mecena.fly.dev>. It is a single small machine and every AI request is paid for by the project owner.
+- Do not run load tests, fuzzers or high-volume scanners against <https://mecena.lgarbayo.com>. It is a single small machine run by one person.
 
 ### Scope
 
 **In scope**
 
 - The code in this repository: the Next.js app and its API routes under `src/app/api/`, the server code under `src/server/` and `src/features/`, the MCP server in `src/mcp/` (both the remote endpoint at `/api/mcp` and the local stdio server started with `npm run mcp`), and the scripts under `scripts/`.
-- The live deployment at <https://mecena.fly.dev>.
+- The live deployment at <https://mecena.lgarbayo.com>.
 - The build and deploy configuration: `Dockerfile`, `fly.toml` and the workflows in `.github/workflows/`.
 
 **Out of scope** (please report these to their owners instead)
@@ -109,8 +109,8 @@ Mecena was built on 13 and 14 November 2026 at the 1hack-2026 hackathon. **It ha
 
 **AI usage and cost controls**
 
-- Every AI feature runs on the project owner's server-side Anthropic API key. Users never provide their own key.
-- Spending is bounded by three layers: a per-user limit on each AI route, a per-user daily allowance across all AI routes, and a global daily ceiling on Claude requests for the whole app (`MECENA_AI_DAILY_CAP`). The per-user limits live in memory, like the sign-in counters, so a restart resets them; the global ceiling is saved on the data volume and survives restarts. A way to get around these limits is in scope.
+- The live deployment runs without AI on the server (no `ANTHROPIC_API_KEY`, ADR-027): drafts are rule-based and users improve them, and run the simulated jury, with their own assistant over MCP or by copying a prompt. A self-hosted copy can set `ANTHROPIC_API_KEY`; every AI feature then runs on that server-side key and users never provide their own.
+- When a server-side key is set, spending is bounded by three layers: a per-user limit on each AI route, a per-user daily allowance across all AI routes, and a global daily ceiling on Claude requests for the whole app (`MECENA_AI_DAILY_CAP`). The per-user limits live in memory, like the sign-in counters, so a restart resets them; the global ceiling is saved on the data volume and survives restarts. A way to get around these limits is in scope.
 - Text, photos and documents that users provide, and the text of public grant calls, are sent to the Anthropic API as part of prompts. Structured model answers are validated against fixed schemas before they are used, but there is no other specific defence against prompt injection.
 
 **Sign-up and invite codes**
@@ -142,7 +142,7 @@ We follow coordinated disclosure:
 
 1. You report privately by email, as described above.
 2. We acknowledge within 24 to 48 hours and work on a fix, keeping you informed.
-3. Once the fix is deployed to <https://mecena.fly.dev>, we agree with you on a date to publish the details. If no fix is possible, we agree on a reasonable period together before anything is published.
+3. Once the fix is deployed to <https://mecena.lgarbayo.com>, we agree with you on a date to publish the details. If no fix is possible, we agree on a reasonable period together before anything is published.
 4. We credit you in the fix commit and the changelog, unless you ask to stay anonymous.
 
 Please do not publish details, proof-of-concept code or data you obtained until the fix is live or the agreed period has passed. We will not take any action against people who report in good faith and follow this policy.

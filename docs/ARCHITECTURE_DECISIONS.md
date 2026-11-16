@@ -507,7 +507,7 @@ the app shows a mock paywall («Modo prueba», nothing charged) so it runs anywh
 **Context.** The microphone needs HTTPS and the demo phone needed a stable URL instead of a laptop tunnel. The store
 is a JSON file with an in-process write queue (ADR-003).
 
-**Decision.** Mecena runs on Fly.io at https://mecena.fly.dev: a two-stage `Dockerfile` (`next build`, then
+**Decision.** Mecena runs on Fly.io at https://mecena.lgarbayo.com: a two-stage `Dockerfile` (`next build`, then
 `next start`) on one machine in `cdg` with a 1 GB volume mounted at `/data`. Deploys use `--ha=false` so Fly never adds
 a second machine. `fly.toml` keeps the machine always on (`auto_stop_machines = "off"`, `min_machines_running = 1`)
 and health-checks `/api/health` (#38).

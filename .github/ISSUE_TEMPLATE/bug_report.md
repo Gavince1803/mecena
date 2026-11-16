@@ -14,7 +14,7 @@ or personal data you would not want public. Security problems go to the maintain
 A clear description of what happens. E.g. "On my phone the voice onboarding stops hearing me after the second question."
 
 **To reproduce**
-1. Go to '...' (e.g. https://mecena.fly.dev/onboarding)
+1. Go to '...' (e.g. https://mecena.lgarbayo.com/onboarding)
 2. Tap / type '...'
 3. See error
 
@@ -22,7 +22,7 @@ A clear description of what happens. E.g. "On my phone the voice onboarding stop
 What you expected to happen instead.
 
 **Environment**
-- Where: [e.g. the live app at https://mecena.fly.dev, or local `npm run dev` at commit `46dfa4f`]
+- Where: [e.g. the live app at https://mecena.lgarbayo.com, or local `npm run dev` at commit `46dfa4f`]
 - Page / URL: [e.g. `/convocatorias`, `/dossier`, `/solicitud/...`]
 - Account type: [creator / pyme]
 - Plan: [free / Mecena Pro / Solicitud premium credit]

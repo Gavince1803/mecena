@@ -84,6 +84,15 @@ The app's interface is in Spanish, so entries quote screen labels as the user se
 
 ### Changed
 
+- Mecena now lives at <https://mecena.lgarbayo.com>, a subdomain of the maintainer's own domain,
+  instead of the Fly default `mecena.fly.dev`. `MECENA_PUBLIC_URL` points there, so the links the
+  MCP server returns (dossier, PDF, `/pro`) and the endpoint shown in «Conectar con Claude» use
+  the new address, and the README, the MCP guide, the contributing and security policies and the
+  demo checklist name it too. `mecena.fly.dev` keeps working, but sessions are per domain, so
+  anyone who switches has to sign in again; existing MCP tokens are valid on both. `SECURITY.md`
+  also stopped saying that every AI request is paid by the owner, which is no longer true since
+  the server runs without AI. (#85)
+
 - What Mecena Pro and the Solicitud premium sell, now that Mecena may have no AI of its own. The
   first draft of an application is free for the 3 calls of the month (the rule-based draft, which
   costs nothing and gets people into the core loop). Pro sells every match, the dossier adapted to
