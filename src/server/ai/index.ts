@@ -13,13 +13,15 @@ import { dossierAi } from "@/features/dossier/adapt-ai";
 import { justificationAi } from "@/features/justification/ai";
 import { deepResearchAi } from "@/features/deep-research/ai";
 import { currentAiSwitches } from "@/features/demo/ai-mode";
-import { isMockAi } from "./llm";
+import { isMockAi, isServerAiOff } from "./llm";
 
 const slices = [onboardingAi, worksAi, matchingAi, callsIngestAi, draftingAi, juryAi, dossierAi, deepResearchAi, justificationAi];
 
 export function getAi(forceMock = false): AiService {
   const mock = forceMock || isMockAi();
   const methods = Object.assign({}, ...slices.map((s) => (mock ? s.mock : s.real)));
+  // No AI on the server for real users: the demo-only mocks give way to their honest versions (ADR-027).
+  if (mock && !forceMock && isServerAiOff()) Object.assign(methods, ...slices.map((s) => s.offline ?? {}));
   // Plan B from /demo ("Tribunal determinista"): only the jury runs on the deterministic mock (61 → 84) for this account.
   if (!mock && currentAiSwitches().deterministicJury) Object.assign(methods, juryAi.mock);
   return { mode: mock ? "mock" : "anthropic", ...methods } as AiService;

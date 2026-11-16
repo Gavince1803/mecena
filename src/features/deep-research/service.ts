@@ -19,6 +19,8 @@ import { normalizeDiscipline, withCanonicalCallFields } from "@/features/normali
 import { evaluate } from "@/features/matching/rules";
 import { resolveEntitlement } from "@/features/purchases/server";
 import { getAi } from "@/server/ai";
+import { AiUnavailableError, isServerAiOff } from "@/server/ai/llm";
+import { DEEP_RESEARCH_UNAVAILABLE } from "./ai";
 import { dataDir, getDossier, getProfile, listCalls, listWorks } from "@/server/store";
 
 // ---------- limits (the AI runs on the owner's key) ----------
@@ -324,6 +326,7 @@ type Reservation =
  * POSTs cannot slip past the caps. `job` lets tests await the background run; routes ignore it.
  */
 export async function startDeepResearch(ids: ResearchIds): Promise<{ view: DeepResearchView; job?: Promise<DeepResearchState | undefined> }> {
+  if (isServerAiOff()) throw new AiUnavailableError(DEEP_RESEARCH_UNAVAILABLE); // before the paywall: nobody pays for it
   await requirePro(ids.appUserId);
   const profile = getProfile(ids.profileId);
   const signature = researchSignature(profile);

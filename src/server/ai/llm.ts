@@ -28,13 +28,22 @@ export function isMockAi(): boolean {
   return serverEnv().aiMock || currentAiSwitches().aiMock;
 }
 
+/**
+ * The server has no AI for real users (production without a key, or MECENA_NO_AI=1): features that only make sense with
+ * a model say so and point to the user's own assistant instead of showing a mock's made-up output. An account with the
+ * demo switch "IA simulada" on still gets the demo mocks (an explicit choice for a stage account).
+ */
+export function isServerAiOff(): boolean {
+  return serverEnv().noAi && !currentAiSwitches().aiMock;
+}
+
 export function modelFor(tier: ModelTier): string {
   const env = serverEnv();
   return tier === "fast" ? env.modelFast : env.modelSmart;
 }
 
 export class AiError extends Error {
-  constructor(message: string, readonly reason: "refusal" | "parse" | "api" | "budget") {
+  constructor(message: string, readonly reason: "refusal" | "parse" | "api" | "budget" | "unavailable") {
     super(message);
     this.name = "AiError";
   }
@@ -48,6 +57,17 @@ export class AiBudgetError extends AiError {
   constructor() {
     super("Mecena ha llegado hoy a su límite de uso de la IA. Vuelve a probar mañana.", "budget");
     this.name = "AiBudgetError";
+  }
+}
+
+/**
+ * This feature needs a model and the server has none (isServerAiOff). An AiError, so features that fall back to their
+ * deterministic version keep working; routes answer 503 with this Spanish message.
+ */
+export class AiUnavailableError extends AiError {
+  constructor(message = "Esta función necesita IA y Mecena no la ofrece en la app. Puedes hacerlo con tu propio asistente: conecta Claude u otro asistente compatible con MCP en Cuenta → Conectar con Claude, o copia el texto que te preparamos y pégalo en el chat que uses.") {
+    super(message, "unavailable");
+    this.name = "AiUnavailableError";
   }
 }
 

@@ -193,6 +193,8 @@ export const justificationAi: AiSlice<"extractInvoice" | "writeJustification"> =
     extractInvoice: async (input) => mockExtract(input),
     writeJustification: async (input) => mockWrite(input),
   },
+  // No AI on the server: the photo is kept and the user types the invoice (the mock's reading is made up).
+  offline: { extractInvoice: async () => nothingRead() },
   real: {
     async extractInvoice(input) {
       try {

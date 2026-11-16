@@ -5,6 +5,7 @@
 export const ENV = {
   ANTHROPIC_API_KEY: "ANTHROPIC_API_KEY",
   MECENA_AI_MOCK: "MECENA_AI_MOCK",
+  MECENA_NO_AI: "MECENA_NO_AI", // "1": the server has no AI for real users (automatic in production without ANTHROPIC_API_KEY)
   MECENA_MODEL_FAST: "MECENA_MODEL_FAST",
   MECENA_MODEL_SMART: "MECENA_MODEL_SMART",
   MECENA_MODEL_ONBOARDING: "MECENA_MODEL_ONBOARDING",
@@ -35,6 +36,9 @@ export function serverEnv() {
   return {
     anthropicApiKey: e.ANTHROPIC_API_KEY || undefined,
     aiMock: e.MECENA_AI_MOCK === "1" || !e.ANTHROPIC_API_KEY,
+    // No AI on the server for real users (ADR-027): the deterministic versions that are honest stay, the ones built for
+    // tests and the demo (a fixed invoice, a scripted jury) are switched off. On by default in production without a key.
+    noAi: e.MECENA_NO_AI === "1" || (e.NODE_ENV === "production" && !e.ANTHROPIC_API_KEY),
     modelFast: e.MECENA_MODEL_FAST || DEFAULT_MODELS.fast,
     modelSmart: e.MECENA_MODEL_SMART || DEFAULT_MODELS.smart,
     modelOnboarding: e.MECENA_MODEL_ONBOARDING || DEFAULT_ONBOARDING_MODEL,

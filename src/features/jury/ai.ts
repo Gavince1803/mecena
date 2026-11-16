@@ -17,7 +17,7 @@ import {
   type Work,
 } from "@/contracts";
 import { enforce } from "@/features/drafting/rules";
-import { structured, type StructuredRequest } from "@/server/ai/llm";
+import { AiUnavailableError, structured, type StructuredRequest } from "@/server/ai/llm";
 import { polishProse, WORDING_RULE } from "@/server/ai/wording";
 import { allocate, BUSINESS_JUDGES, CREATOR_JUDGES, fixesFor, isVisualCriterion, judgeSpread, mockTarget } from "./rules";
 
@@ -232,7 +232,19 @@ export function applyPatch(sections: readonly ApplicationSection[], patch: Revis
 
 const sheetsOf = (works: readonly Work[] = []) => works.map((w) => ({ titulo: w.sheet.title, año: w.sheet.year, tecnica: w.sheet.technique, medidas: w.sheet.dimensions, serie: w.sheet.series, concepto: w.sheet.concept }));
 
+/** The simulated jury without AI on the server: the mock's scores are scripted (61 → 84), so it is not offered. */
+export const JURY_UNAVAILABLE =
+  "El tribunal simulado necesita IA y Mecena no la ofrece en la app. Pásalo con tu propio asistente: copia el texto que te preparamos y pégalo en el chat que uses, o conecta Claude u otro asistente compatible con MCP en Cuenta → Conectar con Claude.";
+
 export const juryAi: AiSlice<"judgeApplication" | "reviseApplication"> = {
+  offline: {
+    async judgeApplication() {
+      throw new AiUnavailableError(JURY_UNAVAILABLE);
+    },
+    async reviseApplication() {
+      throw new AiUnavailableError(JURY_UNAVAILABLE);
+    },
+  },
   mock: {
     async judgeApplication({ call, application, judge }) {
       return mockVerdict(call, application, judge.id);

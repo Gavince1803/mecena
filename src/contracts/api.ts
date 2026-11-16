@@ -22,7 +22,7 @@ import {
 import { PRODUCTS } from "./purchases";
 
 export const ApiError = z.object({
-  error: z.enum(["bad_request", "unauthorized", "forbidden", "not_found", "conflict", "payment_required", "too_many_requests", "ai_failed", "internal"]),
+  error: z.enum(["bad_request", "unauthorized", "forbidden", "not_found", "conflict", "payment_required", "too_many_requests", "ai_failed", "ai_unavailable", "internal"]),
   message: z.string(),
 });
 export type ApiError = z.infer<typeof ApiError>;
@@ -211,7 +211,7 @@ export const JuryImproveRequest = z.object({
 });
 export const JuryUndoRequest = z.object({ applicationId: ID });
 // GET /api/jury?applicationId -> latest score (or null)
-export const JuryLatestResponse = z.object({ score: JuryScore.nullable(), application: Application });
+export const JuryLatestResponse = z.object({ score: JuryScore.nullable(), application: Application, serverAi: z.boolean().optional() });
 export const JuryResponse = z.object({ score: JuryScore, previous: JuryScore.optional(), application: Application });
 
 // /api/entitlements
@@ -307,7 +307,7 @@ export const JustificationResponse = z.object({
   summary: JustificationSummary,
   memoria: JustificationMemoria.nullable(),
   memoriaStale: z.boolean(), // the invoices or the budget changed after it was drafted
-  mode: z.enum(["ai", "mock"]),
+  mode: z.enum(["ai", "mock", "off"]), // off: no AI on the server, invoices are typed by hand
 });
 export type JustificationResponse = z.infer<typeof JustificationResponse>;
 

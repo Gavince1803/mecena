@@ -11,6 +11,7 @@ import { Paywall } from "@/features/purchases/ui/Paywall";
 import { changes, errorText, scoreWithProgress } from "./client";
 import s from "./jury.module.css";
 import { JuryScoreSkeleton } from "./JurySkeleton";
+import { AssistantCard } from "@/features/drafting/ui/AssistantCard";
 
 /** Animated count-up between two totals (instant when the user prefers reduced motion). */
 function useCountUp(target: number, from: number) {
@@ -67,6 +68,9 @@ export function JuryPage({ applicationId }: { applicationId: string }) {
   const [error, setError] = useState<{ text: string; retry: () => void } | null>(null);
   // 402: the runs included with a Solicitud premium are used up (the jury is Pro)
   const [paywall, setPaywall] = useState(false);
+  // false: the server has no AI. The jury runs with the user's own assistant; a score saved over MCP is still shown.
+  const [serverAi, setServerAi] = useState(true);
+  const [current, setCurrent] = useState<Application | null>(null);
   const started = useRef(false);
 
   const show = useCallback((sc: JuryScore, a: Application) => {
@@ -127,8 +131,11 @@ export function JuryPage({ applicationId }: { applicationId: string }) {
     setError(null);
     setPhase("loading");
     try {
-      const latest = await apiGet<{ score: JuryScore | null; application: Application }>(`${API.jury}?applicationId=${encodeURIComponent(applicationId)}`);
+      const latest = await apiGet<{ score: JuryScore | null; application: Application; serverAi?: boolean }>(`${API.jury}?applicationId=${encodeURIComponent(applicationId)}`);
+      setCurrent(latest.application);
+      setServerAi(latest.serverAi !== false);
       if (latest.score && latest.score.applicationVersion === latest.application.version) show(latest.score, latest.application);
+      else if (latest.serverAi === false) return; // nothing to score with here: the page offers the user's assistant
       else {
         const r = await rescore("scoring", latest.score?.judges);
         show(r.score, r.application);
@@ -196,6 +203,7 @@ export function JuryPage({ applicationId }: { applicationId: string }) {
       if (!r) return;
       setPrevious(null);
       if (r.score) show(r.score, r.application);
+      else if (!serverAi) setApp(r.application);
       else {
         setApp(r.application);
         const s2 = await rescore("scoring", score?.judges);
@@ -270,6 +278,19 @@ export function JuryPage({ applicationId }: { applicationId: string }) {
             {progressList(false)}
             <JuryScoreSkeleton />
           </LoadingRegion>
+        )}
+        {!serverAi && current && (
+          <>
+            <AssistantCard
+              applicationId={current.id}
+              task="jury"
+              version={current.version}
+              intro="El tribunal simulado necesita IA y Mecena no la ofrece en la app. Copia este texto y pégalo en el asistente que uses (ChatGPT, Gemini, Claude, Le Chat…, también en su plan gratis): hará de los tres jueces con los criterios de las bases y te dirá qué mejorar. Si conectas Claude u otro asistente por MCP, la puntuación se guarda aquí."
+            />
+            <Link href={ROUTES.application(current.callId)} className="btn btn-quiet">
+              Volver a la solicitud
+            </Link>
+          </>
         )}
         {errorBox}
         {paywallSheet}
@@ -350,6 +371,19 @@ export function JuryPage({ applicationId }: { applicationId: string }) {
       {fixes.length > 0 && (
         <Card>
           <h2>Mejoras que proponen</h2>
+          {!serverAi ? (
+            <>
+              <p className={s.note}>Aplícalas en la solicitud (completa los huecos o edita el texto) o con tu asistente.</p>
+              <ul className={s.comments}>
+                {fixes.map(({ f, criterionId, criterion }) => (
+                  <li key={`${criterionId}-${f}`}>
+                    {f} <small>({criterion})</small>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : (
+          <>
           <p className={s.note}>Si a una mejora le falta un dato tuyo, escríbelo debajo: lo usaremos tal cual, sin inventar nada.</p>
           {fixes.map(({ f, criterionId, criterion }) => (
             <div key={`${criterionId}-${f}`} className={s.fixRow}>
@@ -384,8 +418,12 @@ export function JuryPage({ applicationId }: { applicationId: string }) {
               )}
             </div>
           ))}
+          </>
+          )}
         </Card>
       )}
+
+      {!serverAi && <AssistantCard applicationId={app.id} task="jury" version={app.version} />}
 
       {errorBox}
       <p className={s.disclaimer}>{score.disclaimer}</p>
@@ -396,7 +434,7 @@ export function JuryPage({ applicationId }: { applicationId: string }) {
         </Link>
       </div>
       <div className={s.actions}>
-        {fixes.length > 0 && (
+        {fixes.length > 0 && serverAi && (
           <Button onClick={improve} disabled={busy || accepted.size === 0}>
             {phase === "revising" ? "Aplicando mejoras…" : phase === "rescoring" ? "El tribunal vuelve a leer…" : "Aplicar mejoras"}
           </Button>

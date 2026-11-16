@@ -7,7 +7,7 @@ import type { JuryStreamEvent } from "../stream";
 export function errorText(e: unknown, fallback: string): string {
   if (e instanceof ApiClientError) {
     if (e.status === 502) return fallback;
-    if (e.status === 400 || e.status === 402 || e.status === 404 || e.status === 409 || e.status === 429) return e.message;
+    if (e.status === 400 || e.status === 402 || e.status === 404 || e.status === 409 || e.status === 429 || e.status === 503) return e.message; // 503: no AI on the server (Spanish message)
     if (e.code === "network") return "Sin conexión. Comprueba la red e inténtalo de nuevo.";
   }
   return fallback;

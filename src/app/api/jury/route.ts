@@ -10,13 +10,14 @@ import { body, json, route } from "@/server/http";
 import { idempotent } from "@/server/idempotency";
 import { getApplication, latestJuryScore } from "@/server/store";
 import { limitAi } from "@/server/ai-limits";
+import { isServerAiOff } from "@/server/ai/llm";
 
 export const dynamic = "force-dynamic";
 
 export const GET = route(async (req: Request) => {
   const id = new URL(req.url).searchParams.get("applicationId") ?? "";
   const application = ownedApplication(requireUser(req).id, id);
-  return json({ score: latestJuryScore(id) ?? null, application });
+  return json({ score: latestJuryScore(id) ?? null, application, serverAi: !isServerAiOff() });
 });
 
 export const POST = route(idempotent(async (req: Request) => {

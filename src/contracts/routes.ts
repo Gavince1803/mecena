@@ -87,6 +87,7 @@ export const API = {
   callsResearch: "/api/calls/research", // Pro deep research: GET ?profileId state + results, POST { profileId? } start
   applications: "/api/applications", // POST { callId, profileId? }
   application: (id: string) => `/api/applications/${encodeURIComponent(id)}`,
+  applicationAssistant: (id: string, task: "draft" | "jury") => `/api/applications/${encodeURIComponent(id)}/assistant?task=${task}`, // GET -> { text } for the user's own assistant
   jury: "/api/jury", // POST { applicationId, force? } (Accept: application/x-ndjson streams one event per judge)
   juryImprove: "/api/jury/improve", // POST { applicationId, scoreId, fixes?, facts?, stage? }
   juryUndo: "/api/jury/undo", // POST { applicationId } -> restores the draft from before "Aplicar mejoras"

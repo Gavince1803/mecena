@@ -3,7 +3,7 @@
 // candidates; the service validates them with the Call schema and the rules decide eligibility and score.
 import type Anthropic from "@anthropic-ai/sdk";
 import { DeepResearchCandidates, type AiSlice, type DeepResearchInput, type DeepResearchResult } from "@/contracts";
-import { AiError, anthropic, chargeAiCall, modelFor, structured } from "@/server/ai/llm";
+import { AiError, AiUnavailableError, anthropic, chargeAiCall, modelFor, structured } from "@/server/ai/llm";
 
 const SYSTEM = `Eres el documentalista de Mecena, que ayuda a artistas, pymes y autónomos de España a encontrar convocatorias.
 Tu tarea: buscar en la web premios, becas, residencias, certámenes y concursos PRIVADOS (fundaciones, galerías, museos, asociaciones, festivales, empresas, obra social de bancos) a los que esta persona o empresa pueda presentarse, que estén ABIERTOS hoy o abran pronto.
@@ -57,9 +57,19 @@ const MAX_SEARCH_REQUESTS = 2;
 
 const day = (iso: string, offsetDays: number) => new Date(Date.parse(iso) + offsetDays * 864e5).toISOString().slice(0, 10);
 
+/** Deep research without AI on the server (its mock candidates are invented). */
+export const DEEP_RESEARCH_UNAVAILABLE =
+  "La búsqueda ampliada necesita IA y Mecena no la ofrece en la app. Pídesela a tu propio asistente: conecta Claude u otro asistente compatible con MCP en Cuenta → Conectar con Claude.";
+
 export const deepResearchAi: AiSlice<"deepResearch"> = {
   // Deterministic and offline: one valid candidate, one already closed and one without a source URL, so the
   // service's validation is exercised the same way as with real output.
+  // No AI on the server: the mock's candidates are invented, so there is no deep research to show.
+  offline: {
+    async deepResearch() {
+      throw new AiUnavailableError(DEEP_RESEARCH_UNAVAILABLE);
+    },
+  },
   mock: {
     async deepResearch(input) {
       const what = input.profile.kind === "business" ? "empresas creativas" : (input.profile.disciplines[0] ?? "artes visuales");

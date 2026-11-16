@@ -9,6 +9,7 @@ import { BadRequestError, NotFoundError, type ApplicationSection, type Invoice, 
 import { MAX_INVOICES_PER_APPLICATION, type JustificationResponse, type UpdateInvoiceRequest } from "@/contracts/api";
 import type { z } from "zod";
 import { getAi } from "@/server/ai";
+import { isServerAiOff } from "@/server/ai/llm";
 import {
   deleteInvoice,
   getApplication,
@@ -43,7 +44,7 @@ export function justificationState(applicationId: string): JustificationResponse
     summary,
     memoria,
     memoriaStale: !!memoria && memoria.signature !== summary.signature,
-    mode: getAi().mode === "mock" ? "mock" : "ai",
+    mode: isServerAiOff() ? "off" : getAi().mode === "mock" ? "mock" : "ai",
   };
 }
 

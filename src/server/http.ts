@@ -11,7 +11,7 @@ import {
   UnauthorizedError,
 } from "@/contracts";
 import type { ApiError } from "@/contracts/api";
-import { AiBudgetError, AiError } from "@/server/ai/llm";
+import { AiBudgetError, AiError, AiUnavailableError } from "@/server/ai/llm";
 
 /** What the user sees for failures whose detail is technical (and in English): the detail goes to the server log only. */
 export const ERROR_MESSAGES = {
@@ -33,6 +33,7 @@ export function errorResponse(e: unknown): NextResponse<ApiError> {
   if (e instanceof PaymentRequiredError) return fail("payment_required", e.message, 402);
   if (e instanceof NotFoundError) return fail("not_found", e.message, 404);
   if (e instanceof AiBudgetError) return fail("too_many_requests", e.message, 429);
+  if (e instanceof AiUnavailableError) return fail("ai_unavailable", e.message, 503);
   // Technical detail (zod issues, SDK errors, stack traces) stays in the server log.
   console.error(e);
   if (e instanceof ZodError) return fail("bad_request", ERROR_MESSAGES.badRequest, 400); // internal validation, not the request body

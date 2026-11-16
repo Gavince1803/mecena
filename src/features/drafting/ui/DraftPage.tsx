@@ -17,6 +17,8 @@ import { ApiClientError, IDEMPOTENCY_HEADER, apiGet, apiSend, newIdempotencyKey 
 import { useAction } from "@/lib/use-action";
 import { DraftSectionsSkeleton, DraftSkeleton } from "./DraftSkeleton";
 import { closedEdition, draftAsText } from "./export";
+import { AssistantCard } from "./AssistantCard";
+import { GapsCard } from "./GapsCard";
 import s from "./draft.module.css";
 import { Icon } from "@/components/ui/icons";
 
@@ -24,6 +26,8 @@ type Sources = Record<string, TranscriptSegment>;
 interface AppRes {
   application: Application | null;
   sources: Sources;
+  /** false: the server has no AI (the draft is the rule-based one; the jury and improvements go to the user's assistant). */
+  serverAi?: boolean;
 }
 
 const STEPS = [
@@ -36,7 +40,7 @@ const euros = (n: number) => `${n.toLocaleString("es-ES", { useGrouping: "always
 
 /** Spanish text for a failed request (server 4xx messages are already Spanish; AI and 5xx details never shown). */
 function errorText(e: unknown, fallback: string): string {
-  if (e instanceof ApiClientError && [400, 404, 409, 429].includes(e.status)) return e.message;
+  if (e instanceof ApiClientError && [400, 404, 409, 429, 503].includes(e.status)) return e.message;
   return fallback;
 }
 
@@ -104,6 +108,7 @@ export function DraftPage({ callId }: { callId: string }) {
   const [editing, setEditing] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
+  const [serverAi, setServerAi] = useState(true);
   const savedTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   // last version the server accepted: blur only saves what really changed
   const serverApp = useRef<Application | null>(null);
@@ -123,6 +128,7 @@ export function DraftPage({ callId }: { callId: string }) {
         setApp(a.application);
         serverApp.current = a.application;
         setSources(a.sources);
+        setServerAi(a.serverAi !== false);
       })
       .catch((e) =>
         setError(errorText(e, "No hemos podido cargar la solicitud. Recarga la página.")),
@@ -185,14 +191,14 @@ export function DraftPage({ callId }: { callId: string }) {
   // Prewarm the jury while the user reads the draft: the score is usually ready when they open the tribunal.
   // The server shares one scoring per version, so opening the jury meanwhile joins it instead of paying twice.
   useEffect(() => {
-    if (!app || prewarmed.current === app.id) return;
+    if (!app || !serverAi || prewarmed.current === app.id) return;
     prewarmed.current = app.id;
     fetch(API.jury, {
       method: "POST",
       headers: { "content-type": "application/json", [IDEMPOTENCY_HEADER]: newIdempotencyKey() },
       body: JSON.stringify({ applicationId: app.id }),
     }).catch(() => {});
-  }, [app]);
+  }, [app, serverAi]);
 
   const copy = async (key: string, text: string) => {
     try {
@@ -236,9 +242,11 @@ export function DraftPage({ callId }: { callId: string }) {
               </p>
             )}
             <p>
-              {profile?.kind === "business"
-                ? "Mecena redacta la presentación de tu empresa, la memoria del proyecto, los objetivos y el presupuesto con lo que nos has contado, siguiendo los criterios de las bases. Tú revisas y tienes la última palabra."
-                : "Mecena redacta la memoria, tu declaración y el presupuesto con lo que nos has contado, siguiendo los criterios de las bases. Tú revisas y tienes la última palabra."}
+              {!serverAi
+                ? "Mecena prepara un primer borrador con lo que nos has contado, ordenado según las bases y con los huecos marcados. Después lo completas aquí o lo mejoras con tu propio asistente. Tú tienes la última palabra."
+                : profile?.kind === "business"
+                  ? "Mecena redacta la presentación de tu empresa, la memoria del proyecto, los objetivos y el presupuesto con lo que nos has contado, siguiendo los criterios de las bases. Tú revisas y tienes la última palabra."
+                  : "Mecena redacta la memoria, tu declaración y el presupuesto con lo que nos has contado, siguiendo los criterios de las bases. Tú revisas y tienes la última palabra."}
             </p>
             <Button onClick={draft}>{edition ? `Prepárala para la edición ${edition.next}` : "Prepárame la solicitud"}</Button>
             {error && (
@@ -427,6 +435,9 @@ export function DraftPage({ callId }: { callId: string }) {
           )}
         </Card>
       )}
+
+      <GapsCard sections={app.sections} onSave={(sections) => save({ sections })} />
+      <AssistantCard applicationId={app.id} task="draft" version={app.version} sections={app.sections} onApply={(sections) => save({ sections })} />
 
       <Card>
         <h2>Documentos</h2>
